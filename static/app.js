@@ -829,13 +829,18 @@ function renderSymbolTable(st) {
   tbody.innerHTML = "";
   (st.flatSymbols || []).forEach(sym => {
     const tr = document.createElement("tr");
-    const statusBadge = sym.isUsed
-      ? '<span class="tag-badge low">Referenced</span>'
-      : '<span class="tag-badge high">Unused</span>';
+    let statusBadge;
+    if (sym.name === "main" && sym.kind === "function") {
+      statusBadge = '<span class="tag-badge low">Entry Point</span>';
+    } else if (sym.isUsed) {
+      statusBadge = '<span class="tag-badge low">Referenced</span>';
+    } else {
+      statusBadge = '<span class="tag-badge high">Unused</span>';
+    }
 
-    const refText = sym.references && sym.references.length > 0
-      ? `${sym.usageCount} times`
-      : '0';
+    const refText = (sym.name === "main" && sym.kind === "function" && (!sym.references || sym.references.length === 0))
+      ? 'Entry Point'
+      : (sym.references && sym.references.length > 0 ? `${sym.usageCount} times` : '0');
 
     tr.innerHTML = `
       <td><strong>${escapeHtml(sym.name)}</strong></td>

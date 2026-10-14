@@ -100,7 +100,9 @@ class SemanticAnalyzer:
                     "col": col,
                 }
                 # Also define in global symbol table
-                self.symbol_table.define(name, ret_type, "function", line, col)
+                sym, _ = self.symbol_table.define(name, ret_type, "function", line, col)
+                if (name == "main" or name.endswith(".main") or name.endswith("::main")) and sym:
+                    sym.add_reference(line, col, "entrypoint")
 
     def _analyze_globals(self):
         for g_decl in self.ast.get("globals", []):
@@ -427,27 +429,61 @@ class SemanticAnalyzer:
                 return arr_type[:-1]
             return "unknown"
 
+        if t == "MemberAccess":
+            obj = expr.get("object")
+            if obj:
+                self._analyze_expression(obj)
+            member = expr.get("member")
+            if member:
+                self.symbol_table.record_usage(member, line, col, "read")
+            return "unknown"
+
         if t == "Call":
             callee = expr.get("callee")
             args = expr.get("args", [])
+            target = expr.get("target")
+
+            if target and target != expr:
+                self._analyze_expression(target)
+
             arg_types = [self._analyze_expression(a) for a in args]
 
-            # Check builtins
-            if callee in BUILTIN_FUNCTIONS:
-                b_info = BUILTIN_FUNCTIONS[callee]
-                if not b_info.get("variadic") and "params" in b_info:
-                    expected_params = b_info["params"]
-                    if len(args) != len(expected_params):
-                        self.diagnostics.append(Diagnostic(
-                            "warning",
-                            f"Function '{callee}' expects {len(expected_params)} arguments, but {len(args)} were provided",
-                            line, col, "argument-count-mismatch"
-                        ))
-                return b_info["returnType"]
+            # Find matching user function signature or builtin
+            matched_fn_name = None
+            if isinstance(callee, str):
+                if callee in self.function_signatures:
+                    matched_fn_name = callee
+                elif callee in BUILTIN_FUNCTIONS:
+                    b_info = BUILTIN_FUNCTIONS[callee]
+                    if not b_info.get("variadic") and "params" in b_info:
+                        expected_params = b_info["params"]
+                        if len(args) != len(expected_params):
+                            self.diagnostics.append(Diagnostic(
+                                "warning",
+                                f"Function '{callee}' expects {len(expected_params)} arguments, but {len(args)} were provided",
+                                line, col, "argument-count-mismatch"
+                            ))
+                    return b_info["returnType"]
+                else:
+                    curr_fn = self.current_function.get("name", "") if self.current_function else ""
+                    curr_prefix = curr_fn.rsplit(".", 1)[0] if "." in curr_fn else (curr_fn.rsplit("::", 1)[0] if "::" in curr_fn else "")
+                    candidates = []
+                    if curr_prefix:
+                        candidates.append(f"{curr_prefix}.{callee}")
+                        candidates.append(f"{curr_prefix}::{callee}")
+                    for f_name in self.function_signatures:
+                        if f_name.endswith(f".{callee}") or f_name.endswith(f"::{callee}"):
+                            candidates.append(f_name)
 
-            # Check user functions
-            if callee in self.function_signatures:
-                fn_info = self.function_signatures[callee]
+                    for cand in candidates:
+                        if cand in self.function_signatures:
+                            matched_fn_name = cand
+                            break
+
+            # If matched user function, record usage and validate arity
+            if matched_fn_name:
+                self.symbol_table.record_usage(matched_fn_name, line, col, "call")
+                fn_info = self.function_signatures[matched_fn_name]
                 expected_params = fn_info["params"]
                 if len(args) != len(expected_params):
                     self.diagnostics.append(Diagnostic(
@@ -457,12 +493,19 @@ class SemanticAnalyzer:
                     ))
                 return fn_info["returnType"]
 
-            # Undeclared function call
-            self.diagnostics.append(Diagnostic(
-                "warning",
-                f"Implicit declaration of function '{callee}'",
-                line, col, "implicit-function-declaration"
-            ))
+            # If callee is a string and exists in symbol table directly
+            if isinstance(callee, str):
+                sym = self.symbol_table.record_usage(callee, line, col, "call")
+                if sym:
+                    return sym.var_type
+
+            # Undeclared function call (skip if builtin-like or member call like obj.method)
+            if isinstance(callee, str) and not callee.startswith("new ") and not ("." in callee or "->" in callee):
+                self.diagnostics.append(Diagnostic(
+                    "warning",
+                    f"Implicit declaration of function '{callee}'",
+                    line, col, "implicit-function-declaration"
+                ))
             return "int"
 
         if t == "Ternary":

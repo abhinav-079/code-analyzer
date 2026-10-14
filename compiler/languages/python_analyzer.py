@@ -317,8 +317,37 @@ def analyze_python_source(source: str) -> Dict[str, Any]:
     all_smells = []
     smell_id = 1
 
-    # Extract functions
+    # Collect all called function names across the entire module
+    all_calls = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name):
+                fname = node.func.id
+                all_calls[fname] = all_calls.get(fname, 0) + 1
+            elif isinstance(node.func, ast.Attribute):
+                attr_name = node.func.attr
+                all_calls[attr_name] = all_calls.get(attr_name, 0) + 1
+
+    # Extract functions and register in global symbol table
     func_nodes = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    for fn in func_nodes:
+        call_count = all_calls.get(fn.name, 0)
+        is_fn_used = call_count > 0 or fn.name == "main"
+        fn_sym = {
+            "name": fn.name,
+            "type": _expr_to_str(fn.returns) if getattr(fn, "returns", None) else "def",
+            "kind": "function",
+            "scopeId": 0,
+            "scopeName": "global",
+            "line": fn.lineno,
+            "col": getattr(fn, "col_offset", 0) + 1,
+            "isUsed": is_fn_used,
+            "usageCount": max(call_count, 1 if fn.name == "main" else 0),
+            "firstUse": {"line": fn.lineno} if is_fn_used else None,
+            "references": [{"line": fn.lineno, "col": 1, "kind": "entrypoint" if fn.name == "main" else "call"}] if is_fn_used else [],
+        }
+        scopes[0]["symbols"].append(fn_sym)
+        flat_symbols.append(fn_sym)
 
     for fn in func_nodes:
         # Cyclomatic complexity
