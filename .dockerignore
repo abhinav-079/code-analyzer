@@ -1,0 +1,11 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.venv
+.git
+.gitignore
+.DS_Store
+.gemini
+tests
+.pytest_cache

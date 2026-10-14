@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  analyzer:
+    build: .
+    container_name: code_quality_analyzer
+    ports:
+      - "5001:5001"
+    restart: unless-stopped
+    environment:
+      - PORT=5001
+      - FLASK_ENV=production

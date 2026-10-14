@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Code Quality Analyzer — Multi-Language Compiler Analysis</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="title-row">
+      <div class="title-left">
+        <h1>Code Quality Analyzer</h1>
+        <span class="version-badge">Multi-Language Compiler</span>
+      </div>
+      <div class="title-actions">
+        <button class="pill-btn demos-toggle-btn" id="toggleDemosBtn" type="button">⚡ Demos & Presets ▾</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Showcase Section Demos Drawer (Hidden by default) -->
+  <div class="demos-panel" id="demosPanel" style="display: none;">
+    <div class="demos-header">
+      <span class="demos-title">Select Section Feature Demo or Language Sample</span>
+      <button class="close-demos-btn" id="closeDemosBtn" type="button" title="Close">&times;</button>
+    </div>
+    <div class="demos-section">
+      <span class="demos-heading">Section Feature Demos</span>
+      <div class="demos-grid">
+        <button class="showcase-btn" data-sample="sample_metrics" data-tab="metrics" data-lang="c">📊 Metrics & Complexity</button>
+        <button class="showcase-btn" data-sample="sample_cfg" data-tab="cfg" data-lang="c">🌿 Control Flow Graph (CFG)</button>
+        <button class="showcase-btn alert" data-sample="sample_diagnostics" data-tab="semantic" data-lang="c">🔍 Semantic Diagnostics</button>
+        <button class="showcase-btn warn" data-sample="sample_smells" data-tab="smells" data-lang="c">⚠️ Code Smells & Refactoring</button>
+        <button class="showcase-btn" data-sample="sample_symbols" data-tab="symbol" data-lang="c">📚 Symbol Table & Scoping</button>
+        <button class="showcase-btn" data-sample="sample_ast" data-tab="ast" data-lang="c">🌳 Abstract Syntax Tree</button>
+        <button class="showcase-btn" data-sample="sample_tokens" data-tab="tokens" data-lang="c">🔤 Lexical Tokens</button>
+      </div>
+    </div>
+    <div class="demos-divider"></div>
+    <div class="demos-section">
+      <span class="demos-heading">Multi-Language Pipelines</span>
+      <div class="demos-grid">
+        <button class="showcase-btn lang-btn" data-sample="python_sample" data-tab="metrics" data-lang="python">🐍 Python Pipeline</button>
+        <button class="showcase-btn lang-btn" data-sample="java_sample" data-tab="metrics" data-lang="java">☕ Java Class & Methods</button>
+        <button class="showcase-btn lang-btn" data-sample="js_sample" data-tab="metrics" data-lang="javascript">📜 JavaScript Logic</button>
+        <button class="showcase-btn lang-btn" data-sample="cpp_sample" data-tab="metrics" data-lang="cpp">⚡ C++ Services</button>
+        <button class="showcase-btn lang-btn" data-sample="sample_metrics" data-tab="metrics" data-lang="c">🔧 C Structural</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- Left panel: Code Editor & Multi-file management -->
+    <div class="panel editor-panel">
+      <div class="panel-header">
+        <div class="panel-header-left">
+          <h2>Source Editor</h2>
+          <span class="lang-tag" id="currentLangTag">Language: C</span>
+          <button class="pill-btn upload-btn" id="uploadFileBtn" type="button">↑ Upload File</button>
+          <input type="file" id="fileUploadInput" accept=".c,.cpp,.h,.hpp,.py,.java,.js" style="display: none;">
+        </div>
+        <div class="mode-toggles">
+          <button class="pill-btn active" id="singleFileModeBtn">Single File</button>
+          <button class="pill-btn" id="multiFileModeBtn">Project Mode</button>
+        </div>
+      </div>
+
+      <!-- File tabs (Visible in Project Mode) -->
+      <div class="file-tabs" id="fileTabsBar" style="display: none;">
+        <div class="file-tab-list" id="fileTabList"></div>
+        <button class="add-file-btn" id="addFileBtn" title="Add File">+ New File</button>
+      </div>
+
+      <div class="editor-wrapper">
+        <div class="editor-gutter" id="editorGutter"></div>
+        <textarea id="src" spellcheck="false" wrap="off">{{ samples['sample_metrics'] }}</textarea>
+      </div>
+
+      <div class="controls">
+        <select id="langSelect" style="max-width: 140px;">
+          <option value="auto">Auto Detect</option>
+          <option value="c">C</option>
+          <option value="cpp">C++</option>
+          <option value="python">Python</option>
+          <option value="java">Java</option>
+          <option value="javascript">JavaScript</option>
+        </select>
+        <select id="sampleSelect">
+          <optgroup label="Section Feature Demos">
+            <option value="sample_metrics">Metrics & Function Complexity</option>
+            <option value="sample_cfg">CFG Branching & Loops</option>
+            <option value="sample_diagnostics">Semantic Diagnostics & Errors</option>
+            <option value="sample_smells">Code Smells & Refactoring</option>
+            <option value="sample_symbols">Symbol Table & Scoping</option>
+            <option value="sample_ast">Abstract Syntax Tree</option>
+            <option value="sample_tokens">Lexical Tokens</option>
+          </optgroup>
+          <optgroup label="Multi-Language Samples">
+            <option value="python_sample">Python: Multi-Function Pipeline</option>
+            <option value="java_sample">Java: Class & Methods</option>
+            <option value="js_sample">JavaScript: Functions & Branching</option>
+            <option value="cpp_sample">C++: Class & References</option>
+            <option value="sample_metrics">C: Structural Functions</option>
+          </optgroup>
+        </select>
+        <button class="primary" id="analyzeBtn">Analyze Code</button>
+        <button class="secondary" id="analyzeProjectBtn" style="display: none;">Analyze Project</button>
+      </div>
+
+      <div class="error-box" id="errorBox"></div>
+
+      <!-- Quick Summary Card -->
+      <div class="quick-summary" id="quickSummary" style="display: none;">
+        <div class="quality-badge-wrap">
+          <span class="score-circle" id="quickGrade">A</span>
+          <div>
+            <div class="score-title">Quality Score: <span id="quickScore">100</span>/100</div>
+            <div class="score-desc" id="quickGradeDesc">Clean and maintainable</div>
+          </div>
+        </div>
+        <div class="quick-stats">
+          <div><strong id="quickLoc">0</strong> LOC</div>
+          <div><strong id="quickCc">0</strong> CC</div>
+          <div><strong id="quickSmells">0</strong> Smells</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right panel: Results Tabs -->
+    <div class="panel results-panel">
+      <div class="tabs-scroll">
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="metrics">Metrics</button>
+          <button class="tab-btn" data-tab="cfg">Flowchart (CFG)</button>
+          <button class="tab-btn" data-tab="semantic">Diagnostics <span class="tab-badge" id="diagBadge">0</span></button>
+          <button class="tab-btn" data-tab="smells">Code Smells <span class="tab-badge alert" id="smellsBadge">0</span></button>
+          <button class="tab-btn" data-tab="symbol">Symbol Table</button>
+          <button class="tab-btn" data-tab="ast">AST</button>
+          <button class="tab-btn" data-tab="tokens">Tokens</button>
+          <button class="tab-btn" data-tab="project" id="projectTabBtn" style="display: none;">Project</button>
+          <button class="tab-btn" data-tab="history">History</button>
+          <button class="tab-btn" data-tab="report">Report</button>
+        </div>
+      </div>
+
+      <!-- Tab 1: Metrics & Functions Breakdown -->
+      <div class="tab-panel active" id="tab-metrics">
+        <div class="empty-state" id="metricsEmpty">Run the analyzer to view extracted structural metrics.</div>
+        <div id="metricsWrap" style="display:none;">
+          <h3 class="section-title">Program Overview</h3>
+          <div class="metric-grid" id="metricGrid"></div>
+
+          <div class="highlight-card" id="mostComplexCard" style="display: none;">
+            <div class="highlight-title">Most Complex Function</div>
+            <div class="highlight-body" id="mostComplexBody"></div>
+          </div>
+
+          <h3 class="section-title" style="margin-top: 24px;">Per-Function Analysis</h3>
+          <div class="table-wrap">
+            <table class="function-table">
+              <thead>
+                <tr>
+                  <th>Function</th>
+                  <th>Return</th>
+                  <th>LOC</th>
+                  <th>Params</th>
+                  <th>Vars</th>
+                  <th>Max Nesting</th>
+                  <th>Complexity (CC)</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="functionsTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Control Flow Graph (CFG) -->
+      <div class="tab-panel" id="tab-cfg">
+        <div class="empty-state" id="cfgEmpty">Run the analyzer to generate the Control Flow Graph.</div>
+        <div id="cfgWrap" style="display:none;">
+          <div class="cfg-header">
+            <div class="cfg-controls">
+              <label for="cfgFunctionSelect">Active Function:</label>
+              <select id="cfgFunctionSelect"></select>
+            </div>
+            <div class="cfg-formula-badge" id="cfgFormulaBadge">
+              Formula: M = E - N + 2P = <span id="cfgFormulaVal">1</span>
+            </div>
+          </div>
+
+          <div class="cfg-legend">
+            <span class="legend-item"><span class="legend-color entry"></span> Entry</span>
+            <span class="legend-item"><span class="legend-color condition"></span> Condition</span>
+            <span class="legend-item"><span class="legend-color statement"></span> Block</span>
+            <span class="legend-item"><span class="legend-color exit"></span> Exit</span>
+            <span class="legend-item"><span class="legend-line true"></span> True</span>
+            <span class="legend-item"><span class="legend-line false"></span> False</span>
+            <span class="legend-item"><span class="legend-line loop"></span> Loop</span>
+          </div>
+
+          <div class="graph-container" id="cfgContainer">
+            <div class="graph-toolbar">
+              <button class="tool-btn" id="cfgZoomInBtn" title="Zoom In">+</button>
+              <button class="tool-btn" id="cfgZoomOutBtn" title="Zoom Out">-</button>
+              <button class="tool-btn fit-btn" id="cfgFitBtn" title="Fit Entire Graph to Screen">Fit Graph</button>
+              <button class="tool-btn" id="cfgResetBtn" title="Reset View">Reset</button>
+            </div>
+            <svg id="cfgSvg" class="interactive-svg" preserveAspectRatio="xMidYMid meet"></svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Semantic Diagnostics -->
+      <div class="tab-panel" id="tab-semantic">
+        <div class="empty-state" id="semanticEmpty">Run the analyzer to perform semantic analysis.</div>
+        <div id="semanticWrap" style="display:none;">
+          <div class="diag-header-row">
+            <div class="diag-filters">
+              <button class="pill-btn active" data-filter="all" id="diagFilterAll">All (<span id="diagCountAll">0</span>)</button>
+              <button class="pill-btn" data-filter="error" id="diagFilterError">Errors (<span id="diagCountError">0</span>)</button>
+              <button class="pill-btn" data-filter="warning" id="diagFilterWarning">Warnings (<span id="diagCountWarning">0</span>)</button>
+            </div>
+          </div>
+          <div class="diagnostics-list" id="diagnosticsList"></div>
+        </div>
+      </div>
+
+      <!-- Tab 4: Code Smells & Refactoring -->
+      <div class="tab-panel" id="tab-smells">
+        <div class="empty-state" id="smellsEmpty">Run the analyzer to detect code smells and view recommendations.</div>
+        <div id="smellsWrap" style="display:none;">
+          <div class="smells-header-banner">
+            <div>
+              <h3>Refactoring & Smells Engine</h3>
+            </div>
+            <span class="smells-count-pill" id="smellsTotalPill">0 Smells</span>
+          </div>
+          <div class="smells-list" id="smellsList"></div>
+        </div>
+      </div>
+
+      <!-- Tab 5: Symbol Table -->
+      <div class="tab-panel" id="tab-symbol">
+        <div class="empty-state" id="symbolEmpty">Run the analyzer to construct the Symbol Table.</div>
+        <div id="symbolWrap" style="display:none;">
+          <div class="symbol-summary" id="symbolSummary"></div>
+          <div class="table-wrap">
+            <table class="symbol-table">
+              <thead>
+                <tr>
+                  <th>Identifier</th>
+                  <th>Type</th>
+                  <th>Kind</th>
+                  <th>Scope</th>
+                  <th>Declared</th>
+                  <th>References</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="symbolTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 6: AST (Syntax Tree) -->
+      <div class="tab-panel" id="tab-ast">
+        <div class="empty-state" id="astEmpty">Run the analyzer to see the parsed Abstract Syntax Tree.</div>
+        <div id="astWrap" style="display:none;">
+          <div class="subnav">
+            <div class="subnav-left">
+              <button class="pill-btn active" id="astViewTreeBtn">Hierarchical Tree</button>
+              <button class="pill-btn" id="astViewGraphBtn">Interactive Diagram</button>
+            </div>
+          </div>
+
+          <div class="ast-tree" id="astTree"></div>
+
+          <div class="graph-container" id="astGraphContainer" style="display: none;">
+            <div class="graph-toolbar">
+              <button class="tool-btn" id="astZoomInBtn" title="Zoom In">+</button>
+              <button class="tool-btn" id="astZoomOutBtn" title="Zoom Out">-</button>
+              <button class="tool-btn fit-btn" id="astFitBtn" title="Fit to Screen">Fit Graph</button>
+              <button class="tool-btn" id="astResetBtn" title="Reset View">Reset</button>
+            </div>
+            <svg id="astSvg" class="interactive-svg"></svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 7: Tokens -->
+      <div class="tab-panel" id="tab-tokens">
+        <div class="empty-state" id="tokensEmpty">Run the analyzer to see the classified token stream.</div>
+        <div class="table-wrap" id="tokensWrap" style="display:none;">
+          <table>
+            <thead><tr><th>Line:Col</th><th>Lexeme</th><th>Token Type</th></tr></thead>
+            <tbody id="tokensBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab 8: Multi-File Project Dashboard -->
+      <div class="tab-panel" id="tab-project">
+        <div class="empty-state" id="projectEmpty">Run project analysis to see cross-file metrics and comparisons.</div>
+        <div id="projectWrap" style="display:none;">
+          <h3 class="section-title">Project Summary</h3>
+          <div class="metric-grid" id="projectMetricGrid"></div>
+
+          <h3 class="section-title" style="margin-top: 24px;">File-by-File Comparison</h3>
+          <div class="table-wrap">
+            <table class="project-table">
+              <thead>
+                <tr>
+                  <th>Filename</th>
+                  <th>LOC</th>
+                  <th>Functions</th>
+                  <th>Complexity (CC)</th>
+                  <th>Avg CC</th>
+                  <th>Smells</th>
+                  <th>Grade</th>
+                </tr>
+              </thead>
+              <tbody id="projectTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 9: Analysis History -->
+      <div class="tab-panel" id="tab-history">
+        <div class="history-header">
+          <h3>Analysis History</h3>
+          <button class="pill-btn danger" id="clearHistoryBtn">Clear History</button>
+        </div>
+        <div class="history-list" id="historyList"></div>
+      </div>
+
+      <!-- Tab 10: Quality Report -->
+      <div class="tab-panel" id="tab-report">
+        <div class="empty-state" id="reportEmpty">Run the analyzer to generate the full report.</div>
+        <div id="reportWrap" style="display:none;">
+          <div class="report-actions">
+            <button class="pill-btn active" id="downloadReportBtn" title="Download text report file">↓ Download Report (.txt)</button>
+            <button class="pill-btn" id="downloadJsonReportBtn" title="Download structured analysis JSON">↓ Download JSON</button>
+            <button class="pill-btn" id="copyReportBtn">Copy Report</button>
+          </div>
+          <div class="report" id="reportText"></div>
+          <div class="say-box">
+            <h3>Review Presentation Script</h3>
+            <p id="sayText"></p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  window.SAMPLES = {{ samples | tojson }};
+</script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
