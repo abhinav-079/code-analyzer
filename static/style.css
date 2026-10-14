@@ -31,16 +31,23 @@
   --shadow-hover: 0 20px 48px rgba(0, 0, 0, 0.8), 0 0 24px rgba(155, 29, 61, 0.2);
   --shadow-btn: 0 4px 14px rgba(155, 29, 61, 0.4);
 
-  --mono: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Unified SF Pro Typography Everywhere */
+  --sf-pro: "SF Pro Display", "SF Pro Text", "SF Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: var(--sf-pro);
+  --sans: var(--sf-pro);
 }
 
-* { box-sizing: border-box; }
+*, *::before, *::after,
+html, body, button, input, select, textarea, code, pre, kbd, samp, table, th, td, div, span, p, h1, h2, h3, h4, label, a, svg, text {
+  box-sizing: border-box;
+  font-family: var(--sf-pro) !important;
+}
+
 html, body { margin: 0; padding: 0; height: 100%; }
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: var(--sans);
+  font-family: var(--sf-pro) !important;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

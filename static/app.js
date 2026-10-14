@@ -571,7 +571,7 @@ function drawCfgForFunction(cfg) {
       lbl.setAttribute("y", ly + 1);
       lbl.setAttribute("fill", strokeColor);
       lbl.setAttribute("font-size", "10px");
-      lbl.setAttribute("font-family", "ui-monospace, monospace");
+      lbl.setAttribute("font-family", "'SF Pro Display', 'SF Pro Text', 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif");
       lbl.setAttribute("font-weight", "700");
       lbl.textContent = edge.label;
       g.appendChild(lbl);
@@ -611,7 +611,7 @@ function drawCfgForFunction(cfg) {
     header.setAttribute("fill", tagColor);
     header.setAttribute("font-size", "11px");
     header.setAttribute("font-weight", "700");
-    header.setAttribute("font-family", "ui-monospace, monospace");
+    header.setAttribute("font-family", "'SF Pro Display', 'SF Pro Text', 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif");
     header.textContent = node.label || node.id;
     nodeG.appendChild(header);
 
@@ -622,7 +622,7 @@ function drawCfgForFunction(cfg) {
       lineTxt.setAttribute("y", pos.y + 38 + iIdx * lineH);
       lineTxt.setAttribute("fill", "#e2e8f0");
       lineTxt.setAttribute("font-size", "11px");
-      lineTxt.setAttribute("font-family", "ui-monospace, monospace");
+      lineTxt.setAttribute("font-family", "'SF Pro Display', 'SF Pro Text', 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif");
       lineTxt.textContent = inst.length > 27 ? inst.substring(0, 26) + "..." : inst;
       nodeG.appendChild(lineTxt);
     });
@@ -1282,7 +1282,7 @@ function renderAstGraph(ast) {
 
   if (!ast || (!ast.functions || ast.functions.length === 0)) {
     svg.innerHTML = `
-      <text x="50%" y="50%" fill="#71717a" font-size="14" font-family="sans-serif" text-anchor="middle">
+      <text x="50%" y="50%" fill="#71717a" font-size="14" font-family="'SF Pro Display', 'SF Pro Text', 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif" text-anchor="middle">
         No AST nodes found. Run analysis with valid code.
       </text>`;
     return;
@@ -1469,7 +1469,7 @@ function renderAstGraph(ast) {
     tagLabel.setAttribute("y", "18");
     tagLabel.setAttribute("fill", tagText);
     tagLabel.setAttribute("font-size", "9px");
-    tagLabel.setAttribute("font-family", "ui-monospace, monospace");
+    tagLabel.setAttribute("font-family", "'SF Pro Display', 'SF Pro Text', 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif");
     tagLabel.setAttribute("font-weight", "700");
     tagLabel.setAttribute("text-anchor", "middle");
     tagLabel.textContent = node.tag;
@@ -1482,7 +1482,7 @@ function renderAstGraph(ast) {
     titleText.setAttribute("y", "18.5");
     titleText.setAttribute("fill", "#f4f4f6");
     titleText.setAttribute("font-size", "11px");
-    titleText.setAttribute("font-family", "-apple-system, SF Pro Text, sans-serif");
+    titleText.setAttribute("font-family", "'SF Pro Display', 'SF Pro Text', 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif");
     titleText.setAttribute("font-weight", "600");
     const rawTitle = node.title || "";
     titleText.textContent = rawTitle.length > 15 ? rawTitle.substring(0, 14) + "…" : rawTitle;
@@ -1494,7 +1494,7 @@ function renderAstGraph(ast) {
     subText.setAttribute("y", "35");
     subText.setAttribute("fill", "#a1a1aa");
     subText.setAttribute("font-size", "9.5px");
-    subText.setAttribute("font-family", "ui-monospace, monospace");
+    subText.setAttribute("font-family", "'SF Pro Display', 'SF Pro Text', 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif");
     const rawSub = node.sub || "";
     subText.textContent = rawSub.length > 25 ? rawSub.substring(0, 24) + "…" : rawSub;
     nodeG.appendChild(subText);
