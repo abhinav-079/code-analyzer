@@ -33,12 +33,34 @@ def _count_logical_operators(expr: Optional[Dict[str, Any]]) -> int:
         return sum(_count_logical_operators(a) for a in expr.get("args", []))
     if t == "Ternary":
         return (
-            1
-            + _count_logical_operators(expr.get("condition"))
+            _count_logical_operators(expr.get("condition"))
             + _count_logical_operators(expr.get("consequent"))
             + _count_logical_operators(expr.get("alternate"))
         )
     return 0
+
+
+def _count_ternary_complexity(expr: Optional[Dict[str, Any]]) -> int:
+    """Calculates cyclomatic complexity contribution of Ternary expressions (1 per decision + logical operators in condition)."""
+    if not expr or not isinstance(expr, dict):
+        return 0
+    t = expr.get("type")
+    count = 0
+    if t == "Ternary":
+        count += 1 + _count_logical_operators(expr.get("condition"))
+        count += _count_ternary_complexity(expr.get("condition"))
+        count += _count_ternary_complexity(expr.get("consequent"))
+        count += _count_ternary_complexity(expr.get("alternate"))
+        return count
+
+    for k, v in expr.items():
+        if isinstance(v, dict):
+            count += _count_ternary_complexity(v)
+        elif isinstance(v, list):
+            for item in v:
+                if isinstance(item, dict):
+                    count += _count_ternary_complexity(item)
+    return count
 
 
 def complexity_level(cyclomatic: int) -> str:
@@ -90,6 +112,10 @@ def analyze_function(fn: Dict[str, Any]) -> Dict[str, Any]:
         nonlocal depth
         if not node:
             return
+        if isinstance(node, list):
+            for stmt in node:
+                visit(stmt)
+            return
         t = node.get("type")
 
         if t == "Block":
@@ -98,10 +124,16 @@ def analyze_function(fn: Dict[str, Any]) -> Dict[str, Any]:
 
         elif t == "Declaration":
             metrics["variables"] += 1
+            if node.get("init"):
+                metrics["cyclomatic"] += _count_ternary_complexity(node["init"])
+
+        elif t == "ExprStmt":
+            if node.get("expr"):
+                metrics["cyclomatic"] += _count_ternary_complexity(node["expr"])
 
         elif t == "If":
             metrics["ifs"] += 1
-            metrics["cyclomatic"] += 1 + _count_logical_operators(node.get("condition"))
+            metrics["cyclomatic"] += 1 + _count_logical_operators(node.get("condition")) + _count_ternary_complexity(node.get("condition"))
             depth += 1
             metrics["maxNesting"] = max(metrics["maxNesting"], depth)
             visit(node.get("consequent"))
@@ -111,7 +143,11 @@ def analyze_function(fn: Dict[str, Any]) -> Dict[str, Any]:
 
         elif t == "For":
             metrics["fors"] += 1
-            metrics["cyclomatic"] += 1 + _count_logical_operators(node.get("condition"))
+            metrics["cyclomatic"] += 1 + _count_logical_operators(node.get("condition")) + _count_ternary_complexity(node.get("condition"))
+            if node.get("init"):
+                visit(node["init"])
+            if node.get("update"):
+                metrics["cyclomatic"] += _count_ternary_complexity(node["update"])
             depth += 1
             metrics["maxNesting"] = max(metrics["maxNesting"], depth)
             visit(node.get("body"))
@@ -119,7 +155,7 @@ def analyze_function(fn: Dict[str, Any]) -> Dict[str, Any]:
 
         elif t == "While" or t == "DoWhile":
             metrics["whiles"] += 1
-            metrics["cyclomatic"] += 1 + _count_logical_operators(node.get("condition"))
+            metrics["cyclomatic"] += 1 + _count_logical_operators(node.get("condition")) + _count_ternary_complexity(node.get("condition"))
             depth += 1
             metrics["maxNesting"] = max(metrics["maxNesting"], depth)
             visit(node.get("body"))
@@ -140,6 +176,8 @@ def analyze_function(fn: Dict[str, Any]) -> Dict[str, Any]:
 
         elif t == "Return":
             metrics["returns"] += 1
+            if node.get("value"):
+                metrics["cyclomatic"] += _count_ternary_complexity(node["value"])
 
     visit(fn.get("body", {}))
     metrics["complexityLevel"] = complexity_level(metrics["cyclomatic"])

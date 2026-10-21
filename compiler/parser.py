@@ -61,8 +61,11 @@ class Parser:
         t = self.peek()
         if t.type == "KEYWORD" and (t.value in TYPE_KEYWORDS or t.value in ("struct", "class")):
             return True
-        if t.type == "IDENTIFIER" and self.peek(1).type in ("IDENTIFIER", "OPERATOR"):
-            if self.peek(1).type == "IDENTIFIER" or self.peek(1).value in ("*", "&", "[]"):
+        if t.type == "IDENTIFIER":
+            next1 = self.peek(1)
+            if next1.type == "IDENTIFIER" or next1.value in ("*", "&"):
+                return True
+            if next1.value == "[" and self.peek(2).value == "]":
                 return True
         return False
 
@@ -103,11 +106,12 @@ class Parser:
         # Pointers and references (*, &)
         while self.at("OPERATOR", "*") or self.at("OPERATOR", "&"):
             base_type += self.advance().value
-        # Array brackets in type e.g. int[]
+        # Array brackets in type e.g. int[], int[][], int[10][20]
         while self.at("DELIMITER", "["):
             self.advance()
-            if self.at("DELIMITER", "]"):
+            while not self.at("DELIMITER", "]") and not self.at("EOF"):
                 self.advance()
+            self.expect("DELIMITER", "]")
             base_type += "[]"
         return base_type
 
@@ -280,7 +284,7 @@ class Parser:
             if p_type == "void" and self.at("DELIMITER", ")"):
                 break
             p_name = self.expect("IDENTIFIER").value
-            if self.at("DELIMITER", "["):
+            while self.at("DELIMITER", "["):
                 self.advance()
                 if not self.at("DELIMITER", "]"):
                     self.parse_expr()
@@ -359,12 +363,7 @@ class Parser:
 
     def parse_declaration(self):
         tok_start = self.peek()
-        if self.at("KEYWORD"):
-            base_type = self.advance().value
-        elif self.at("IDENTIFIER"):
-            base_type = self.advance().value
-        else:
-            base_type = "auto"
+        base_type = self.parse_full_type()
         declarations = []
 
         while True:
@@ -376,29 +375,26 @@ class Parser:
 
             name_tok = self.expect("IDENTIFIER")
             name = name_tok.value
-            array_size = None
+            array_sizes = []
 
-            # Array declaration e.g. int arr[10];
-            if self.at("DELIMITER", "["):
+            # Multi-dimensional array declaration e.g. int arr[10][20];
+            while self.at("DELIMITER", "["):
                 self.advance()
+                dim_size = None
                 if not self.at("DELIMITER", "]"):
-                    array_size = self.parse_expr()
+                    dim_size = self.parse_expr()
                 self.expect("DELIMITER", "]")
                 var_type += "[]"
+                array_sizes.append(dim_size)
+
+            array_size = array_sizes[0] if array_sizes else None
 
             init = None
             if self.at("OPERATOR", "="):
                 self.advance()
                 # Initializer can be expression or array list { ... }
                 if self.at("DELIMITER", "{"):
-                    self.advance()
-                    init_items = []
-                    while not self.at("DELIMITER", "}"):
-                        init_items.append(self.parse_expr())
-                        if self.at("DELIMITER", ","):
-                            self.advance()
-                    self.expect("DELIMITER", "}")
-                    init = {"type": "ArrayInit", "items": init_items, "line": name_tok.line, "col": name_tok.col}
+                    init = self.parse_array_init()
                 else:
                     init = self.parse_expr()
 
@@ -408,6 +404,7 @@ class Parser:
                 "name": name,
                 "init": init,
                 "arraySize": array_size,
+                "arraySizes": array_sizes,
                 "line": name_tok.line,
                 "col": name_tok.col,
             })
@@ -419,6 +416,26 @@ class Parser:
 
         self.expect("DELIMITER", ";")
         return declarations if len(declarations) > 1 else declarations[0]
+
+    def parse_array_init(self):
+        tok_start = self.expect("DELIMITER", "{")
+        items = []
+        while not self.at("DELIMITER", "}") and not self.at("EOF"):
+            if self.at("DELIMITER", "{"):
+                items.append(self.parse_array_init())
+            else:
+                items.append(self.parse_expr())
+            if self.at("DELIMITER", ","):
+                self.advance()
+            elif not self.at("DELIMITER", "}"):
+                break
+        self.expect("DELIMITER", "}")
+        return {
+            "type": "ArrayInit",
+            "items": items,
+            "line": tok_start.line,
+            "col": tok_start.col,
+        }
 
     def parse_if(self):
         tok_start = self.expect("KEYWORD", "if")
@@ -905,5 +922,25 @@ class Parser:
             e = self.parse_expr()
             self.expect("DELIMITER", ")")
             return e
+
+        if self.at("DELIMITER", "{"):
+            return self.parse_array_init()
+
+        if self.at("DELIMITER", "["):
+            bracket_tok = self.advance()
+            items = []
+            while not self.at("DELIMITER", "]") and not self.at("EOF"):
+                items.append(self.parse_expr())
+                if self.at("DELIMITER", ","):
+                    self.advance()
+                elif not self.at("DELIMITER", "]"):
+                    break
+            self.expect("DELIMITER", "]")
+            return {
+                "type": "ArrayInit",
+                "items": items,
+                "line": bracket_tok.line,
+                "col": bracket_tok.col,
+            }
 
         raise ParseError(f"Unexpected token '{t.value or t.type}' in expression", t.line, t.col)

@@ -97,6 +97,47 @@ class TestParser(unittest.TestCase):
             Parser(tokens).parse_program()
         self.assertIn("Line 1", str(ctx.exception))
 
+    def test_parse_2d_arrays_and_parameters(self):
+        code = """
+        int matrix_calc(int m[3][3], int n) {
+            int x = m[0][0];
+            return x > n ? x : n;
+        }
+        int main() {
+            int matrix[2][2] = {{1, 2}, {3, 4}};
+            int res = matrix_calc(matrix, 2);
+            return res;
+        }
+        """
+        tokens = tokenize(code)
+        ast = Parser(tokens).parse_program()
+        self.assertEqual(len(ast["functions"]), 2)
+        fn0 = ast["functions"][0]
+        self.assertEqual(fn0["name"], "matrix_calc")
+        self.assertEqual(fn0["params"][0]["varType"], "int[][]")
+        self.assertEqual(fn0["params"][0]["name"], "m")
+
+        fn1 = ast["functions"][1]
+        decl = fn1["body"]["statements"][0]
+        self.assertEqual(decl["varType"], "int[][]")
+        self.assertEqual(decl["name"], "matrix")
+        self.assertEqual(decl["init"]["type"], "ArrayInit")
+        self.assertEqual(len(decl["init"]["items"]), 2)
+        self.assertEqual(decl["init"]["items"][0]["type"], "ArrayInit")
+
+    def test_parse_nested_ternary(self):
+        code = """
+        int clamp(int v, int low, int high) {
+            return v < low ? low : (v > high ? high : v);
+        }
+        """
+        tokens = tokenize(code)
+        ast = Parser(tokens).parse_program()
+        ret = ast["functions"][0]["body"]["statements"][0]
+        self.assertEqual(ret["type"], "Return")
+        self.assertEqual(ret["value"]["type"], "Ternary")
+        self.assertEqual(ret["value"]["alternate"]["type"], "Ternary")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -190,8 +190,12 @@ class SemanticAnalyzer:
         if create_scope:
             self.symbol_table.exit_scope()
 
-    def _analyze_statement(self, stmt: Dict[str, Any]):
+    def _analyze_statement(self, stmt: Any):
         if not stmt:
+            return
+        if isinstance(stmt, list):
+            for s in stmt:
+                self._analyze_statement(s)
             return
         t = stmt.get("type")
 
@@ -306,20 +310,16 @@ class SemanticAnalyzer:
 
         if decl.get("init"):
             init_node = decl["init"]
-            if init_node.get("type") == "ArrayInit":
-                for item in init_node.get("items", []):
-                    self._analyze_expression(item)
-            else:
-                init_type = self._analyze_expression(init_node)
-                if init_type and init_type != "unknown":
-                    num_types = {"int", "float", "double", "char", "short", "long"}
-                    if not (var_type in num_types and init_type in num_types):
-                        if var_type != init_type and not ("*" in var_type and init_type == "void*"):
-                            self.diagnostics.append(Diagnostic(
-                                "warning",
-                                f"Type mismatch in initialization of '{name}': declared '{var_type}', assigned '{init_type}'",
-                                line, col, "type-mismatch"
-                            ))
+            init_type = self._analyze_expression(init_node)
+            if init_type and init_type != "unknown":
+                num_types = {"int", "float", "double", "char", "short", "long"}
+                if not (var_type in num_types and init_type in num_types):
+                    if var_type != init_type and not ("*" in var_type and init_type == "void*") and not (var_type.endswith("[]") and init_type.endswith("[]")):
+                        self.diagnostics.append(Diagnostic(
+                            "warning",
+                            f"Type mismatch in initialization of '{name}': declared '{var_type}', assigned '{init_type}'",
+                            line, col, "type-mismatch"
+                        ))
 
     def _analyze_expression(self, expr: Optional[Dict[str, Any]]) -> str:
         """Analyzes an expression and attempts to infer its result type."""
@@ -507,6 +507,14 @@ class SemanticAnalyzer:
                     line, col, "implicit-function-declaration"
                 ))
             return "int"
+
+        if t == "ArrayInit":
+            elem_type = "unknown"
+            for item in expr.get("items", []):
+                t_item = self._analyze_expression(item)
+                if t_item != "unknown":
+                    elem_type = t_item
+            return f"{elem_type}[]" if elem_type != "unknown" else "unknown"
 
         if t == "Ternary":
             self._analyze_expression(expr.get("condition"))

@@ -15,6 +15,7 @@ import ast
 import io
 import token
 import tokenize
+import textwrap
 from typing import Dict, Any, List, Optional, Set, Tuple
 
 
@@ -237,13 +238,94 @@ def _build_python_cfg(fn_node: ast.FunctionDef) -> Dict[str, Any]:
                 curr = exit_loop_id
 
             elif isinstance(s, ast.Return):
-                ret_str = f"return {_expr_to_str(s.value)}" if s.value else "return"
-                for b in nodes:
-                    if b["id"] == curr:
-                        b["instructions"].append(ret_str)
-                        break
-                edges.append({"source": curr, "target": exit_id, "type": "return", "label": "Return"})
-                curr = None
+                ifexp = next((n for n in ast.walk(s) if isinstance(n, ast.IfExp)), None)
+                if ifexp:
+                    cond_str = _expr_to_str(ifexp.test)
+                    cond_id = make_id("COND")
+                    nodes.append({
+                        "id": cond_id,
+                        "label": f"IfExp ({cond_str})",
+                        "type": "condition",
+                        "instructions": [f"if {cond_str}:"],
+                        "line": getattr(s, "lineno", 1),
+                    })
+                    edges.append({"source": curr, "target": cond_id, "type": "fallthrough", "label": ""})
+
+                    then_id = make_id("THEN")
+                    nodes.append({
+                        "id": then_id,
+                        "label": "IfExp True",
+                        "type": "statement",
+                        "instructions": [f"return {_expr_to_str(ifexp.body)}"],
+                        "line": getattr(s, "lineno", 1),
+                    })
+                    edges.append({"source": cond_id, "target": then_id, "type": "true", "label": "True"})
+                    edges.append({"source": then_id, "target": exit_id, "type": "return", "label": "Return"})
+
+                    else_id = make_id("ELSE")
+                    nodes.append({
+                        "id": else_id,
+                        "label": "IfExp False",
+                        "type": "statement",
+                        "instructions": [f"return {_expr_to_str(ifexp.orelse)}"],
+                        "line": getattr(s, "lineno", 1),
+                    })
+                    edges.append({"source": cond_id, "target": else_id, "type": "false", "label": "False"})
+                    edges.append({"source": else_id, "target": exit_id, "type": "return", "label": "Return"})
+                    curr = None
+                else:
+                    ret_str = f"return {_expr_to_str(s.value)}" if s.value else "return"
+                    for b in nodes:
+                        if b["id"] == curr:
+                            b["instructions"].append(ret_str)
+                            break
+                    edges.append({"source": curr, "target": exit_id, "type": "return", "label": "Return"})
+                    curr = None
+
+            elif next((n for n in ast.walk(s) if isinstance(n, ast.IfExp)), None):
+                ifexp = next((n for n in ast.walk(s) if isinstance(n, ast.IfExp)), None)
+                cond_str = _expr_to_str(ifexp.test)
+                cond_id = make_id("COND")
+                nodes.append({
+                    "id": cond_id,
+                    "label": f"IfExp ({cond_str})",
+                    "type": "condition",
+                    "instructions": [f"if {cond_str}:"],
+                    "line": getattr(s, "lineno", 1),
+                })
+                edges.append({"source": curr, "target": cond_id, "type": "fallthrough", "label": ""})
+
+                join_id = make_id("JOIN")
+                nodes.append({
+                    "id": join_id,
+                    "label": "Join IfExp",
+                    "type": "join",
+                    "instructions": [],
+                    "line": getattr(s, "lineno", 1),
+                })
+
+                then_id = make_id("THEN")
+                nodes.append({
+                    "id": then_id,
+                    "label": "IfExp True",
+                    "type": "statement",
+                    "instructions": [_expr_to_str(s)],
+                    "line": getattr(s, "lineno", 1),
+                })
+                edges.append({"source": cond_id, "target": then_id, "type": "true", "label": "True"})
+                edges.append({"source": then_id, "target": join_id, "type": "fallthrough", "label": ""})
+
+                else_id = make_id("ELSE")
+                nodes.append({
+                    "id": else_id,
+                    "label": "IfExp False",
+                    "type": "statement",
+                    "instructions": [_expr_to_str(s)],
+                    "line": getattr(s, "lineno", 1),
+                })
+                edges.append({"source": cond_id, "target": else_id, "type": "false", "label": "False"})
+                edges.append({"source": else_id, "target": join_id, "type": "fallthrough", "label": ""})
+                curr = join_id
 
             else:
                 stmt_str = _expr_to_str(s)
@@ -293,8 +375,11 @@ def analyze_python_source(source: str) -> Dict[str, Any]:
 
     try:
         tree = ast.parse(source)
-    except SyntaxError as e:
-        raise SyntaxError(f"Line {e.lineno}, Col {e.offset}: {e.msg}")
+    except (SyntaxError, IndentationError):
+        try:
+            tree = ast.parse(textwrap.dedent(source))
+        except SyntaxError as e:
+            raise SyntaxError(f"Line {e.lineno}, Col {e.offset}: {e.msg}")
 
     # Build compatible AST dict
     ast_dict = {

@@ -80,6 +80,53 @@ int main() {
         self.assertEqual(res["language"], "cpp")
         self.assertEqual(len(res["metrics"]["perFunction"]), 2)
 
+    def test_multilang_2d_arrays_and_ternary(self):
+        # C with 2D array and ternary
+        c_code = """
+        int calc(int m[2][2]) {
+            int x = m[0][0];
+            return x > 0 ? x : 0;
+        }
+        int main() {
+            int grid[2][2] = {{1, 2}, {3, 4}};
+            return calc(grid);
+        }
+        """
+        c_res = analyze_multilang(c_code, language="c")
+        self.assertEqual(len(c_res["ast"]["functions"]), 2)
+        self.assertEqual(c_res["metrics"]["perFunction"][0]["cyclomatic"], 2)
+
+        # Java with 2D array and ternary
+        java_code = """
+        public class GridCalc {
+            public static int run(int[][] grid, boolean flag) {
+                int val = grid[0][1];
+                return flag ? val * 2 : val;
+            }
+        }
+        """
+        java_res = analyze_multilang(java_code, language="java")
+        self.assertEqual(java_res["metrics"]["perFunction"][0]["cyclomatic"], 2)
+
+        # JavaScript with 2D array and ternary
+        js_code = """
+        function compute(matrix, invert) {
+            let cell = matrix[0][0];
+            return invert ? -cell : cell;
+        }
+        """
+        js_res = analyze_multilang(js_code, language="javascript")
+        self.assertEqual(js_res["metrics"]["perFunction"][0]["cyclomatic"], 2)
+
+        # Python with 2D list and ternary
+        py_code = """
+        def compute_py(matrix, invert):
+            cell = matrix[0][0]
+            return -cell if invert else cell
+        """
+        py_res = analyze_multilang(py_code, language="python")
+        self.assertEqual(py_res["metrics"]["perFunction"][0]["cyclomatic"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

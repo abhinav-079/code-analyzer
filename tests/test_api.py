@@ -23,6 +23,24 @@ class TestAPI(unittest.TestCase):
         self.assertIn("diagnostics", data)
         self.assertIn("quality", data)
 
+    def test_post_analyze_2d_arrays_and_ternary(self):
+        c_code = """
+        int matrix_calc(int m[2][2], int limit) {
+            int top = m[0][0];
+            return top > limit ? top : limit;
+        }
+        int main() {
+            int grid[2][2] = {{10, 20}, {30, 40}};
+            return matrix_calc(grid, 25);
+        }
+        """
+        resp = self.client.post("/analyze", json={"code": c_code, "language": "c"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertEqual(len(data["ast"]["functions"]), 2)
+        self.assertEqual(data["cfgs"]["matrix_calc"]["cyclomaticComplexity"], 2)
+        self.assertEqual(len(data["diagnostics"]), 0)
+
     def test_post_analyze_syntax_error(self):
         resp = self.client.post("/analyze", json={"code": "int main() { invalid @; }"})
         self.assertEqual(resp.status_code, 400)

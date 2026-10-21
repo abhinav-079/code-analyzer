@@ -41,22 +41,28 @@ def _expr_to_str(expr: Optional[Dict[str, Any]]) -> str:
         return f"{expr.get('callee')}({args})"
     if t == "Ternary":
         return f"{_expr_to_str(expr.get('condition'))} ? {_expr_to_str(expr.get('consequent'))} : {_expr_to_str(expr.get('alternate'))}"
+    if t == "ArrayInit":
+        items = ", ".join(_expr_to_str(x) for x in expr.get("items", []))
+        return f"{{{items}}}"
     return ""
 
 
-def _stmt_to_str(stmt: Optional[Dict[str, Any]]) -> str:
+def _stmt_to_str(stmt: Any) -> str:
     if not stmt:
         return ""
+    if isinstance(stmt, list):
+        return ", ".join(_stmt_to_str(s) for s in stmt)
     t = stmt.get("type")
     if t == "Declaration":
         init_str = ""
         if stmt.get("init"):
-            if stmt["init"].get("type") == "ArrayInit":
-                items = ", ".join(_expr_to_str(x) for x in stmt["init"].get("items", []))
-                init_str = f" = {{{items}}}"
-            else:
-                init_str = f" = {_expr_to_str(stmt.get('init'))}"
-        arr_str = f"[{_expr_to_str(stmt.get('arraySize'))}]" if stmt.get("arraySize") else ""
+            init_str = f" = {_expr_to_str(stmt.get('init'))}"
+        if stmt.get("arraySizes"):
+            arr_str = "".join(f"[{_expr_to_str(s)}]" if s else "[]" for s in stmt["arraySizes"])
+        elif stmt.get("arraySize"):
+            arr_str = f"[{_expr_to_str(stmt.get('arraySize'))}]"
+        else:
+            arr_str = ""
         return f"{stmt.get('varType')}{arr_str} {stmt.get('name')}{init_str};"
     if t == "ExprStmt":
         return f"{_expr_to_str(stmt.get('expr'))};"
@@ -229,11 +235,93 @@ class CFGBuilder:
             curr = self._build_statement(stmt, curr)
         return curr
 
-    def _build_statement(self, stmt: Dict[str, Any], current_block: BasicBlock) -> Optional[BasicBlock]:
+    def _find_ternary(self, expr: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if not expr or not isinstance(expr, dict):
+            return None
+        if expr.get("type") == "Ternary":
+            return expr
+        for v in expr.values():
+            if isinstance(v, dict):
+                res = self._find_ternary(v)
+                if res:
+                    return res
+            elif isinstance(v, list):
+                for item in v:
+                    if isinstance(item, dict):
+                        res = self._find_ternary(item)
+                        if res:
+                            return res
+        return None
+
+    def _replace_ternary(self, expr: Any, target: Dict[str, Any], replacement: Any) -> Any:
+        if not isinstance(expr, dict):
+            if isinstance(expr, list):
+                return [self._replace_ternary(item, target, replacement) for item in expr]
+            return expr
+        if expr is target:
+            return replacement
+        res = {}
+        for k, v in expr.items():
+            if isinstance(v, dict):
+                res[k] = self._replace_ternary(v, target, replacement)
+            elif isinstance(v, list):
+                res[k] = [self._replace_ternary(item, target, replacement) for item in v]
+            else:
+                res[k] = v
+        return res
+
+    def _build_statement(self, stmt: Any, current_block: BasicBlock) -> Optional[BasicBlock]:
         if not stmt:
             return current_block
+        if isinstance(stmt, list):
+            return self._build_statements(stmt, current_block)
         t = stmt.get("type")
         line = stmt.get("line", 1)
+
+        # Check for Ternary expressions in statements (Return, Declaration, ExprStmt)
+        ternary = None
+        if t == "Return" and stmt.get("value"):
+            ternary = self._find_ternary(stmt["value"])
+        elif t == "Declaration" and stmt.get("init"):
+            ternary = self._find_ternary(stmt["init"])
+        elif t == "ExprStmt" and stmt.get("expr"):
+            ternary = self._find_ternary(stmt["expr"])
+
+        if ternary:
+            cond_str = _expr_to_str(ternary.get("condition"))
+            cond_block = self.cfg.create_block(label=f"Ternary ({cond_str})", block_type="condition", line=line)
+            cond_block.add_instruction(f"if ({cond_str})")
+            self.cfg.add_edge(current_block.id, cond_block.id, "fallthrough", "")
+
+            then_block = self.cfg.create_block(label="Ternary True", line=line)
+            self.cfg.add_edge(cond_block.id, then_block.id, "true", "True")
+
+            else_block = self.cfg.create_block(label="Ternary False", line=line)
+            self.cfg.add_edge(cond_block.id, else_block.id, "false", "False")
+
+            if t == "Return":
+                then_val = self._replace_ternary(stmt["value"], ternary, ternary.get("consequent"))
+                then_stmt = {"type": "Return", "value": then_val, "line": line}
+                self._build_statement(then_stmt, then_block)
+
+                else_val = self._replace_ternary(stmt["value"], ternary, ternary.get("alternate"))
+                else_stmt = {"type": "Return", "value": else_val, "line": line}
+                self._build_statement(else_stmt, else_block)
+                return None
+            else:
+                join_block = self.cfg.create_block(label="Join Ternary", block_type="join", line=line)
+
+                then_stmt = self._replace_ternary(stmt, ternary, ternary.get("consequent"))
+                then_end = self._build_statement(then_stmt, then_block)
+                if then_end:
+                    self.cfg.add_edge(then_end.id, join_block.id, "fallthrough", "")
+
+                else_stmt = self._replace_ternary(stmt, ternary, ternary.get("alternate"))
+                else_end = self._build_statement(else_stmt, else_block)
+                if else_end:
+                    self.cfg.add_edge(else_end.id, join_block.id, "fallthrough", "")
+
+                return join_block
 
         if t in ("Declaration", "ExprStmt"):
             current_block.add_instruction(_stmt_to_str(stmt))

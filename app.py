@@ -345,7 +345,7 @@ def analyze_project_route():
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5001))
+    port = int(os.environ.get("PORT", 5002))
     host = os.environ.get("HOST", "0.0.0.0")
     debug = os.environ.get("FLASK_DEBUG", "0").lower() in ("1", "true")
     print(f"Starting Code Quality Analyzer on http://{host}:{port}")

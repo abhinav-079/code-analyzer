@@ -83,6 +83,37 @@ class TestSemanticAnalyzer(unittest.TestCase):
         self.assertTrue(x_var["isUsed"])
         self.assertTrue(y_var["isUsed"])
 
+    def test_2d_array_parameters_and_symbol_references(self):
+        code = """
+        int matrix_calc(int m[2][2], int n) {
+            int x = m[0][0];
+            return x > n ? x : n;
+        }
+        int main() {
+            int matrix[2][2] = {{1, 2}, {3, 4}};
+            int res = matrix_calc(matrix, 2);
+            return res;
+        }
+        """
+        tokens = tokenize(code)
+        ast = Parser(tokens).parse_program()
+        res = SemanticAnalyzer(ast).analyze()
+        self.assertEqual(res["errorCount"], 0)
+        self.assertEqual(res["warningCount"], 0)
+
+        flat = res["symbolTable"]["flatSymbols"]
+        fn_sym = [s for s in flat if s["name"] == "matrix_calc" and s["kind"] == "function"][0]
+        self.assertTrue(fn_sym["isUsed"])
+        self.assertEqual(fn_sym["usageCount"], 1)
+
+        matrix_sym = [s for s in flat if s["name"] == "matrix" and s["scopeName"] == "main"][0]
+        self.assertTrue(matrix_sym["isUsed"])
+        self.assertEqual(matrix_sym["type"], "int[][]")
+
+        m_param = [s for s in flat if s["name"] == "m" and s["scopeName"] == "matrix_calc"][0]
+        self.assertTrue(m_param["isUsed"])
+        self.assertEqual(m_param["type"], "int[][]")
+
 
 if __name__ == "__main__":
     unittest.main()
