@@ -14,8 +14,8 @@ Supports:
 """
 
 TYPE_KEYWORDS = {
-    "int", "float", "double", "char", "void", "long", "short", "unsigned", "const",
-    "bool", "boolean", "String", "auto", "let", "var",
+    "int", "float", "double", "char", "void", "long", "short", "unsigned", "signed", "const",
+    "bool", "boolean", "String", "auto", "let", "var", "size_t",
 }
 MODIFIERS = {
     "public", "private", "protected", "static", "final", "virtual",
@@ -103,9 +103,17 @@ class Parser:
         else:
             base_type = "void"
 
+        # Compound types like "unsigned int", "long long", "long double"
+        while self.at("KEYWORD") and self.peek().value in ("int", "long", "short", "char", "double", "float"):
+            base_type += " " + self.advance().value
+        while self.at("KEYWORD", "const"):
+            self.advance()
+
         # Pointers and references (*, &)
-        while self.at("OPERATOR", "*") or self.at("OPERATOR", "&"):
-            base_type += self.advance().value
+        while self.at("OPERATOR", "*") or self.at("OPERATOR", "&") or self.at("KEYWORD", "const"):
+            p_tok = self.advance()
+            if p_tok.value in ("*", "&"):
+                base_type += p_tok.value
         # Array brackets in type e.g. int[], int[][], int[10][20]
         while self.at("DELIMITER", "["):
             self.advance()
@@ -114,6 +122,47 @@ class Parser:
             self.expect("DELIMITER", "]")
             base_type += "[]"
         return base_type
+
+    def looks_like_cast(self):
+        if not self.at("DELIMITER", "("):
+            return False
+        look = 1
+        # Skip leading qualifiers like const, unsigned, signed, struct, class
+        while self.pos + look < len(self.toks) and self.toks[self.pos + look].value in (
+            "const", "unsigned", "signed", "struct", "class"
+        ):
+            look += 1
+        if self.pos + look >= len(self.toks):
+            return False
+        first_tok = self.toks[self.pos + look]
+        # Must be a type keyword or identifier
+        if not ((first_tok.type == "KEYWORD" and first_tok.value in TYPE_KEYWORDS) or first_tok.type == "IDENTIFIER"):
+            return False
+        look += 1
+        # Second word in compound types like "unsigned int", "struct Foo"
+        if self.pos + look < len(self.toks) and self.toks[self.pos + look].type in ("KEYWORD", "IDENTIFIER"):
+            if self.toks[self.pos + look].value in TYPE_KEYWORDS or first_tok.value in ("struct", "class"):
+                look += 1
+        # Pointers, references, array brackets
+        while self.pos + look < len(self.toks) and self.toks[self.pos + look].value in ("*", "&", "[", "]", "const"):
+            look += 1
+        if self.pos + look >= len(self.toks) or self.toks[self.pos + look].value != ")":
+            return False
+
+        # If the type token was a built-in type keyword (like float, int, char, double, void, etc.),
+        # (float) CANNOT be a valid parenthesized expression value in C/C++/Java. It is always a cast!
+        if first_tok.type == "KEYWORD" and first_tok.value in TYPE_KEYWORDS:
+            return True
+
+        # If it was an identifier (e.g. (MyType)x or (x) + 1):
+        # We look at the token right after ')'
+        after_pos = self.pos + look + 1
+        if after_pos >= len(self.toks):
+            return False
+        after_tok = self.toks[after_pos]
+        if after_tok.value in (";", ",", "]", "}", ")") or (after_tok.type == "OPERATOR" and after_tok.value not in ("*", "&", "+", "-", "!", "~", "++", "--")):
+            return False
+        return True
 
     def looks_like_function(self):
         lookahead = 0
@@ -800,6 +849,55 @@ class Parser:
                 "line": op_tok.line,
                 "col": op_tok.col,
             }
+
+        # sizeof operator: sizeof(int), sizeof(expr)
+        if self.at("KEYWORD", "sizeof"):
+            sz_tok = self.advance()
+            self.expect("DELIMITER", "(")
+            if self.is_type():
+                arg = self.parse_full_type()
+            else:
+                arg = self.parse_expr()
+            self.expect("DELIMITER", ")")
+            return {
+                "type": "Sizeof",
+                "argument": arg,
+                "line": sz_tok.line,
+                "col": sz_tok.col,
+            }
+
+        # C++ explicit casts: static_cast<Type>(expr)
+        if self.at("KEYWORD") and self.peek().value in ("static_cast", "reinterpret_cast", "const_cast", "dynamic_cast"):
+            cast_tok = self.advance()
+            self.expect("OPERATOR", "<")
+            cast_type = self.parse_full_type()
+            self.expect("OPERATOR", ">")
+            self.expect("DELIMITER", "(")
+            arg = self.parse_expr()
+            self.expect("DELIMITER", ")")
+            return {
+                "type": "Cast",
+                "castKind": cast_tok.value,
+                "targetType": cast_type,
+                "argument": arg,
+                "line": cast_tok.line,
+                "col": cast_tok.col,
+            }
+
+        # C/C++/Java type cast: (type)expr e.g. (float)usedMemory, (int)x, (void*)ptr
+        if self.looks_like_cast():
+            cast_start = self.advance()  # consume '('
+            cast_type = self.parse_full_type()
+            self.expect("DELIMITER", ")")
+            arg = self.parse_unary()
+            return {
+                "type": "Cast",
+                "targetType": cast_type,
+                "argument": arg,
+                "line": cast_start.line,
+                "col": cast_start.col,
+            }
+
         return self.parse_postfix()
 
     def parse_postfix(self):

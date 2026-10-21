@@ -44,6 +44,13 @@ def _expr_to_str(expr: Optional[Dict[str, Any]]) -> str:
     if t == "ArrayInit":
         items = ", ".join(_expr_to_str(x) for x in expr.get("items", []))
         return f"{{{items}}}"
+    if t == "Cast":
+        kind = f"{expr.get('castKind')}<{expr.get('targetType')}>" if expr.get("castKind") else f"({expr.get('targetType')})"
+        return f"{kind}{_expr_to_str(expr.get('argument'))}"
+    if t == "Sizeof":
+        arg = expr.get("argument")
+        arg_str = _expr_to_str(arg) if isinstance(arg, dict) else str(arg)
+        return f"sizeof({arg_str})"
     return ""
 
 

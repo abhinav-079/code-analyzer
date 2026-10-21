@@ -114,6 +114,25 @@ class TestSemanticAnalyzer(unittest.TestCase):
         self.assertTrue(m_param["isUsed"])
         self.assertEqual(m_param["type"], "int[][]")
 
+    def test_cast_expression_type_inference(self):
+        code = """
+        int main() {
+            int usedMemory = 50;
+            int totalMemory = 100;
+            float utilization = ((float)usedMemory / totalMemory) * 100;
+            return 0;
+        }
+        """
+        tokens = tokenize(code)
+        ast = Parser(tokens).parse_program()
+        res = SemanticAnalyzer(ast).analyze()
+        self.assertEqual(res["errorCount"], 0)
+        flat = res["symbolTable"]["flatSymbols"]
+        used_sym = [s for s in flat if s["name"] == "usedMemory"][0]
+        total_sym = [s for s in flat if s["name"] == "totalMemory"][0]
+        self.assertTrue(used_sym["isUsed"])
+        self.assertTrue(total_sym["isUsed"])
+
 
 if __name__ == "__main__":
     unittest.main()

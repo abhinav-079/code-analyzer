@@ -8,11 +8,12 @@ Tracks line and column numbers for precise error reporting and diagnostics.
 
 KEYWORDS = {
     # C / C++
-    "int", "float", "double", "char", "void", "long", "short", "unsigned", "const",
+    "int", "float", "double", "char", "void", "long", "short", "unsigned", "signed", "const", "sizeof",
     "if", "else", "for", "while", "do", "return",
     "switch", "case", "default", "break", "continue",
     "struct", "class", "namespace", "using", "template", "auto", "bool", "true", "false",
     "public", "private", "protected", "virtual", "new", "delete", "nullptr",
+    "static_cast", "reinterpret_cast", "const_cast", "dynamic_cast",
     # Java
     "package", "import", "interface", "extends", "implements", "static", "final",
     "this", "super", "boolean", "String", "null", "throws", "try", "catch", "finally",

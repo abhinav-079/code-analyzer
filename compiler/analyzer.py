@@ -31,6 +31,11 @@ def _count_logical_operators(expr: Optional[Dict[str, Any]]) -> int:
         return _count_logical_operators(expr.get("value"))
     if t == "Call":
         return sum(_count_logical_operators(a) for a in expr.get("args", []))
+    if t == "Cast":
+        return _count_logical_operators(expr.get("argument"))
+    if t == "Sizeof":
+        arg = expr.get("argument")
+        return _count_logical_operators(arg) if isinstance(arg, dict) else 0
     if t == "Ternary":
         return (
             _count_logical_operators(expr.get("condition"))

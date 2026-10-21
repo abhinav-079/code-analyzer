@@ -416,6 +416,16 @@ class SemanticAnalyzer:
                 return arg_type[:-1]
             return "unknown"
 
+        if t == "Cast":
+            self._analyze_expression(expr.get("argument"))
+            return expr.get("targetType", "unknown")
+
+        if t == "Sizeof":
+            arg = expr.get("argument")
+            if isinstance(arg, dict):
+                self._analyze_expression(arg)
+            return "int"
+
         if t == "AddressOf":
             arg_type = self._analyze_expression(expr.get("argument"))
             return f"{arg_type}*" if arg_type != "unknown" else "unknown"

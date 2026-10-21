@@ -138,6 +138,34 @@ class TestParser(unittest.TestCase):
         self.assertEqual(ret["value"]["type"], "Ternary")
         self.assertEqual(ret["value"]["alternate"]["type"], "Ternary")
 
+    def test_parse_type_cast_and_sizeof(self):
+        code = """
+        void test_cast() {
+            int usedMemory = 50;
+            int totalMemory = 100;
+            float utilization = ((float)usedMemory / totalMemory) * 100;
+            int sz = sizeof(float);
+        }
+        """
+        tokens = tokenize(code)
+        ast = Parser(tokens).parse_program()
+        stmts = ast["functions"][0]["body"]["statements"]
+        self.assertEqual(len(stmts), 4)
+
+        decl = stmts[2]
+        self.assertEqual(decl["name"], "utilization")
+        self.assertEqual(decl["varType"], "float")
+        # In BinaryExpr '*' -> left is BinaryExpr '/' -> left is Cast
+        div_expr = decl["init"]["left"]
+        self.assertEqual(div_expr["op"], "/")
+        self.assertEqual(div_expr["left"]["type"], "Cast")
+        self.assertEqual(div_expr["left"]["targetType"], "float")
+        self.assertEqual(div_expr["left"]["argument"]["name"], "usedMemory")
+
+        sz_stmt = stmts[3]
+        self.assertEqual(sz_stmt["init"]["type"], "Sizeof")
+        self.assertEqual(sz_stmt["init"]["argument"], "float")
+
 
 if __name__ == "__main__":
     unittest.main()
