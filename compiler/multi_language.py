@@ -24,23 +24,89 @@ def detect_language(code: str, filename: str = "") -> str:
     if fname.endswith((".c", ".h")):
         return "c"
 
-    # Heuristic analysis
-    lines = code.splitlines()
-    for line in lines[:25]:
-        stripped = line.strip()
-        code_part = stripped.split("//")[0].strip()
-        if not code_part.startswith("#include") and not code_part.startswith("#define"):
-            code_part = code_part.split("#")[0].strip()
-        if not code_part:
-            continue
-        if code_part.startswith("def ") or (code_part.startswith("import ") and not code_part.endswith(";")) or "elif " in code_part:
-            return "python"
-        if "public class " in code_part or "System.out.print" in code_part or "public static void main" in code_part:
-            return "java"
-        if code_part.startswith("function ") or "function(" in code_part or "console.log" in code_part or (code_part.startswith("const ") and "=>" in code_part) or code_part.startswith("let "):
-            return "javascript"
-        if "#include <iostream>" in code_part or "std::" in code_part or "using namespace std" in code_part or "class " in code_part:
-            return "cpp"
+    # Multi-factor confidence scoring
+    scores = {"python": 0, "java": 0, "cpp": 0, "javascript": 0, "c": 0}
+
+    # Python indicators
+    if "def " in code or "elif " in code:
+        scores["python"] += 5
+    if "__name__ == '__main__'" in code or '__name__ == "__main__"' in code:
+        scores["python"] += 6
+    if "import " in code and not "import java." in code and not ";" in code:
+        scores["python"] += 3
+    if "print(" in code and not ";" in code:
+        scores["python"] += 7
+    if "None" in code or "True" in code or "False" in code:
+        scores["python"] += 4
+    if "len(" in code or "range(" in code or "input(" in code:
+        scores["python"] += 4
+    if not "{" in code and not "}" in code and not ";" in code:
+        scores["python"] += 3
+
+    # Java indicators
+    if "System.out." in code or "System.err." in code or "System.out.print" in code:
+        scores["java"] += 8
+    if "public static void main" in code:
+        scores["java"] += 8
+    if "import java." in code or "package " in code:
+        scores["java"] += 6
+    if "String[]" in code or "String " in code:
+        scores["java"] += 4
+    if "boolean " in code:
+        scores["java"] += 3
+    if "public class " in code:
+        scores["java"] += 5
+    if "new Scanner" in code or "new ArrayList" in code or "new HashMap" in code:
+        scores["java"] += 5
+    if "extends " in code or "implements " in code:
+        scores["java"] += 4
+
+    # C++ indicators
+    if "#include <iostream>" in code or "#include <vector>" in code or "#include <string>" in code or "#include <algorithm>" in code:
+        scores["cpp"] += 8
+    if "using namespace std" in code:
+        scores["cpp"] += 8
+    if "std::" in code:
+        scores["cpp"] += 7
+    if "cout" in code or "cin" in code or "endl" in code:
+        scores["cpp"] += 6
+    if "nullptr" in code:
+        scores["cpp"] += 4
+    if "public:" in code or "private:" in code or "protected:" in code:
+        scores["cpp"] += 5
+    if "template <" in code or "template<" in code:
+        scores["cpp"] += 6
+    if "class " in code and scores["java"] == 0:
+        scores["cpp"] += 2
+
+    # JavaScript indicators
+    if "console.log" in code or "console.error" in code:
+        scores["javascript"] += 8
+    if "function " in code or "function(" in code:
+        scores["javascript"] += 5
+    if "=>" in code and ("const " in code or "let " in code or "var " in code):
+        scores["javascript"] += 6
+    if "===" in code or "!==" in code:
+        scores["javascript"] += 5
+    if "let " in code or "var " in code:
+        scores["javascript"] += 3
+    if "document." in code or "window." in code:
+        scores["javascript"] += 6
+
+    # C indicators
+    if "#include <stdio.h>" in code or "#include <stdlib.h>" in code or "#include <string.h>" in code:
+        scores["c"] += 6
+    if "printf(" in code or "scanf(" in code:
+        scores["c"] += 4
+    if "malloc(" in code or "free(" in code:
+        scores["c"] += 3
+
+    best_lang = max(scores, key=scores.get)
+    if scores[best_lang] > 0:
+        return best_lang
+
+    if "class " in code:
+        return "java" if ("System." in code or "public " in code) else "cpp"
 
     return "c"
 
@@ -50,7 +116,10 @@ def analyze_multilang(code: str, language: Optional[str] = None, filename: str =
     Analyzes code in C, C++, Python, Java, or JavaScript.
     Produces identical schema for UI rendering (tokens, ast, metrics, symbol table, diagnostics, cfgs, smells, quality).
     """
-    lang = (language or detect_language(code, filename)).lower()
+    if not language or str(language).lower() in ("auto", "none", "null", "autodetect", "auto detect"):
+        lang = detect_language(code, filename).lower()
+    else:
+        lang = str(language).lower()
 
     if lang == "python":
         result = analyze_python_source(code)

@@ -14,22 +14,111 @@ from typing import List, Dict, Any, Optional
 from .symbol_table import SymbolTable, Symbol
 
 BUILTIN_FUNCTIONS = {
+    # C Standard Library
     "printf": {"returnType": "int", "variadic": True},
     "scanf": {"returnType": "int", "variadic": True},
+    "fprintf": {"returnType": "int", "variadic": True},
+    "sprintf": {"returnType": "int", "variadic": True},
+    "snprintf": {"returnType": "int", "variadic": True},
+    "sscanf": {"returnType": "int", "variadic": True},
     "puts": {"returnType": "int", "params": ["char*"]},
     "getchar": {"returnType": "int", "params": []},
     "putchar": {"returnType": "int", "params": ["int"]},
     "malloc": {"returnType": "void*", "params": ["int"]},
+    "calloc": {"returnType": "void*", "params": ["int", "int"]},
+    "realloc": {"returnType": "void*", "params": ["void*", "int"]},
     "free": {"returnType": "void", "params": ["void*"]},
     "exit": {"returnType": "void", "params": ["int"]},
     "strlen": {"returnType": "int", "params": ["char*"]},
     "strcpy": {"returnType": "char*", "params": ["char*", "char*"]},
+    "strncpy": {"returnType": "char*", "params": ["char*", "char*", "int"]},
+    "strcat": {"returnType": "char*", "params": ["char*", "char*"]},
     "strcmp": {"returnType": "int", "params": ["char*", "char*"]},
+    "strncmp": {"returnType": "int", "params": ["char*", "char*", "int"]},
+    "strchr": {"returnType": "char*", "params": ["char*", "int"]},
+    "strstr": {"returnType": "char*", "params": ["char*", "char*"]},
     "abs": {"returnType": "int", "params": ["int"]},
     "sqrt": {"returnType": "double", "params": ["double"]},
     "pow": {"returnType": "double", "params": ["double", "double"]},
+    "ceil": {"returnType": "double", "params": ["double"]},
+    "floor": {"returnType": "double", "params": ["double"]},
+    "sin": {"returnType": "double", "params": ["double"]},
+    "cos": {"returnType": "double", "params": ["double"]},
+    "tan": {"returnType": "double", "params": ["double"]},
+    "log": {"returnType": "double", "params": ["double"]},
+    "exp": {"returnType": "double", "params": ["double"]},
+    "atoi": {"returnType": "int", "params": ["char*"]},
+    "atof": {"returnType": "double", "params": ["char*"]},
+    "atol": {"returnType": "long", "params": ["char*"]},
+    "rand": {"returnType": "int", "params": []},
+    "srand": {"returnType": "void", "params": ["unsigned int"]},
+    "time": {"returnType": "long", "params": ["void*"]},
+    "clock": {"returnType": "long", "params": []},
+    "qsort": {"returnType": "void", "variadic": True},
+    "bsearch": {"returnType": "void*", "variadic": True},
     "memset": {"returnType": "void*", "params": ["void*", "int", "int"]},
     "memcpy": {"returnType": "void*", "params": ["void*", "void*", "int"]},
+    # Java / C++ standard methods
+    "print": {"returnType": "void", "variadic": True},
+    "println": {"returnType": "void", "variadic": True},
+    "format": {"returnType": "String", "variadic": True},
+    "readLine": {"returnType": "String", "variadic": True},
+    "nextInt": {"returnType": "int", "variadic": True},
+    "nextDouble": {"returnType": "double", "variadic": True},
+    "nextLine": {"returnType": "String", "variadic": True},
+    "equals": {"returnType": "boolean", "variadic": True},
+    "toString": {"returnType": "String", "variadic": True},
+    "length": {"returnType": "int", "variadic": True},
+    "size": {"returnType": "int", "variadic": True},
+    "get": {"returnType": "unknown", "variadic": True},
+    "add": {"returnType": "boolean", "variadic": True},
+    "remove": {"returnType": "unknown", "variadic": True},
+    "contains": {"returnType": "boolean", "variadic": True},
+    "charAt": {"returnType": "char", "variadic": True},
+    "substring": {"returnType": "String", "variadic": True},
+    "indexOf": {"returnType": "int", "variadic": True},
+    "toLowerCase": {"returnType": "String", "variadic": True},
+    "toUpperCase": {"returnType": "String", "variadic": True},
+    "trim": {"returnType": "String", "variadic": True},
+    "split": {"returnType": "String[]", "variadic": True},
+    "valueOf": {"returnType": "String", "variadic": True},
+    "parseInt": {"returnType": "int", "variadic": True},
+    "parseDouble": {"returnType": "double", "variadic": True},
+    "min": {"returnType": "unknown", "variadic": True},
+    "max": {"returnType": "unknown", "variadic": True},
+    "push_back": {"returnType": "void", "variadic": True},
+    "pop_back": {"returnType": "void", "variadic": True},
+    "emplace_back": {"returnType": "void", "variadic": True},
+    "insert": {"returnType": "unknown", "variadic": True},
+    "erase": {"returnType": "unknown", "variadic": True},
+    "find": {"returnType": "unknown", "variadic": True},
+    "begin": {"returnType": "unknown", "variadic": True},
+    "end": {"returnType": "unknown", "variadic": True},
+    "clear": {"returnType": "void", "variadic": True},
+    "empty": {"returnType": "boolean", "variadic": True},
+    "front": {"returnType": "unknown", "variadic": True},
+    "back": {"returnType": "unknown", "variadic": True},
+    "swap": {"returnType": "void", "variadic": True},
+    "sort": {"returnType": "void", "variadic": True},
+    "reverse": {"returnType": "void", "variadic": True},
+}
+
+BUILTIN_IDENTIFIERS = {
+    # Java standard objects and classes
+    "System", "out", "in", "err", "String", "Math", "Integer", "Double", "Float", "Boolean",
+    "Character", "Byte", "Short", "Long", "Object", "Class", "Scanner", "List", "ArrayList",
+    "Map", "HashMap", "Set", "HashSet", "Arrays", "Collections", "StringBuilder", "StringBuffer",
+    "Thread", "Runnable", "Exception", "RuntimeException", "Throwable", "PrintStream",
+    # C++ standard objects, streams and containers
+    "std", "cout", "cin", "cerr", "clog", "endl", "flush",
+    "string", "vector", "map", "set", "pair", "make_pair", "tuple", "make_tuple",
+    "stack", "queue", "priority_queue", "deque", "list", "unordered_map", "unordered_set",
+    "nullptr", "NULL", "size_t",
+    # C standard streams & globals
+    "stdin", "stdout", "stderr",
+    # JavaScript standard globals
+    "console", "window", "document", "JSON", "Promise", "Array",
+    "setTimeout", "clearTimeout", "setInterval", "clearInterval",
 }
 
 
@@ -311,7 +400,7 @@ class SemanticAnalyzer:
         if decl.get("init"):
             init_node = decl["init"]
             init_type = self._analyze_expression(init_node)
-            if init_type and init_type != "unknown":
+            if init_type and init_type != "unknown" and var_type not in ("auto", "let", "var", "const", "any", "unknown"):
                 num_types = {"int", "float", "double", "char", "short", "long"}
                 if not (var_type in num_types and init_type in num_types):
                     if var_type != init_type and not ("*" in var_type and init_type == "void*") and not (var_type.endswith("[]") and init_type.endswith("[]")):
@@ -344,7 +433,11 @@ class SemanticAnalyzer:
             sym = self.symbol_table.lookup(name)
             if sym is None:
                 # Check if it's a known function or builtin
-                if name not in self.function_signatures and name not in BUILTIN_FUNCTIONS:
+                if (
+                    name not in self.function_signatures
+                    and name not in BUILTIN_FUNCTIONS
+                    and name not in BUILTIN_IDENTIFIERS
+                ):
                     self.diagnostics.append(Diagnostic(
                         "error",
                         f"Use of undeclared identifier '{name}'",
@@ -445,7 +538,9 @@ class SemanticAnalyzer:
                 self._analyze_expression(obj)
             member = expr.get("member")
             if member:
-                self.symbol_table.record_usage(member, line, col, "read")
+                sym = self.symbol_table.lookup(member)
+                if sym:
+                    self.symbol_table.record_usage(member, line, col, "read")
             return "unknown"
 
         if t == "Call":
@@ -509,8 +604,17 @@ class SemanticAnalyzer:
                 if sym:
                     return sym.var_type
 
-            # Undeclared function call (skip if builtin-like or member call like obj.method)
-            if isinstance(callee, str) and not callee.startswith("new ") and not ("." in callee or "->" in callee):
+            # Undeclared function call (skip if builtin-like or member call like obj.method or builtin method)
+            is_member_call = (
+                (target and target.get("type") == "MemberAccess")
+                or (isinstance(callee, str) and ("." in callee or "->" in callee or "::" in callee))
+            )
+            is_builtin_call = (
+                callee in BUILTIN_FUNCTIONS
+                or callee in BUILTIN_IDENTIFIERS
+                or any(callee.endswith(f".{m}") or callee.endswith(f"::{m}") for m in BUILTIN_FUNCTIONS)
+            )
+            if isinstance(callee, str) and not callee.startswith("new ") and not is_member_call and not is_builtin_call:
                 self.diagnostics.append(Diagnostic(
                     "warning",
                     f"Implicit declaration of function '{callee}'",
@@ -537,8 +641,13 @@ class SemanticAnalyzer:
     def _check_unused_symbols(self):
         for sym in self.symbol_table.get_all_symbols():
             if sym.kind in ("variable", "parameter") and not sym.is_used:
-                # Main function argc/argv parameters often unused, skip if parameter of main
-                if sym.scope_name == "main" and sym.kind == "parameter":
+                # Main function argc/argv/args parameters often unused, skip if parameter of main
+                is_main_scope = (
+                    sym.scope_name == "main"
+                    or sym.scope_name.endswith(".main")
+                    or sym.scope_name.endswith("::main")
+                )
+                if is_main_scope and sym.kind == "parameter":
                     continue
                 self.diagnostics.append(Diagnostic(
                     "warning",

@@ -12,11 +12,17 @@ Leverages Python's standard library `ast` and `tokenize` modules to extract:
 """
 
 import ast
+import builtins
 import io
 import token
 import tokenize
 import textwrap
 from typing import Dict, Any, List, Optional, Set, Tuple
+
+PYTHON_BUILTINS = set(dir(builtins)) | {
+    "__name__", "__file__", "__doc__", "__package__", "__spec__",
+    "True", "False", "None", "self", "cls"
+}
 
 
 def _complexity_level(cc: int) -> str:
@@ -123,7 +129,7 @@ def _tokenize_python(source: str) -> List[Dict[str, Any]]:
     return tokens
 
 
-def _build_python_cfg(fn_node: ast.FunctionDef) -> Dict[str, Any]:
+def _build_python_cfg_from_stmts(name: str, param_str: str, stmts: List[ast.stmt], start_line: int, end_line: int) -> Dict[str, Any]:
     nodes = []
     edges = []
     block_id_counter = 0
@@ -137,13 +143,13 @@ def _build_python_cfg(fn_node: ast.FunctionDef) -> Dict[str, Any]:
     entry_id = "ENTRY"
     exit_id = "EXIT"
 
-    param_str = ", ".join(a.arg for a in fn_node.args.args)
+    entry_inst = [f"def {name}({param_str}):"] if param_str or name not in ("<module>", "main") else [f"execution of {name}"]
     nodes.append({
         "id": entry_id,
         "label": "Entry",
         "type": "entry",
-        "instructions": [f"def {fn_node.name}({param_str}):"],
-        "line": fn_node.lineno,
+        "instructions": entry_inst,
+        "line": start_line,
     })
 
     nodes.append({
@@ -151,7 +157,7 @@ def _build_python_cfg(fn_node: ast.FunctionDef) -> Dict[str, Any]:
         "label": "Exit",
         "type": "exit",
         "instructions": [],
-        "line": getattr(fn_node, "end_lineno", fn_node.lineno),
+        "line": end_line,
     })
 
     start_body_id = make_id()
@@ -160,13 +166,13 @@ def _build_python_cfg(fn_node: ast.FunctionDef) -> Dict[str, Any]:
         "label": "Start",
         "type": "statement",
         "instructions": [],
-        "line": fn_node.lineno,
+        "line": start_line,
     })
     edges.append({"source": entry_id, "target": start_body_id, "type": "fallthrough", "label": ""})
 
-    def process_body(stmts: List[ast.stmt], prev_id: str) -> Optional[str]:
+    def process_body(body_stmts: List[ast.stmt], prev_id: str) -> Optional[str]:
         curr = prev_id
-        for s in stmts:
+        for s in body_stmts:
             if curr is None:
                 break
 
@@ -238,94 +244,13 @@ def _build_python_cfg(fn_node: ast.FunctionDef) -> Dict[str, Any]:
                 curr = exit_loop_id
 
             elif isinstance(s, ast.Return):
-                ifexp = next((n for n in ast.walk(s) if isinstance(n, ast.IfExp)), None)
-                if ifexp:
-                    cond_str = _expr_to_str(ifexp.test)
-                    cond_id = make_id("COND")
-                    nodes.append({
-                        "id": cond_id,
-                        "label": f"IfExp ({cond_str})",
-                        "type": "condition",
-                        "instructions": [f"if {cond_str}:"],
-                        "line": getattr(s, "lineno", 1),
-                    })
-                    edges.append({"source": curr, "target": cond_id, "type": "fallthrough", "label": ""})
-
-                    then_id = make_id("THEN")
-                    nodes.append({
-                        "id": then_id,
-                        "label": "IfExp True",
-                        "type": "statement",
-                        "instructions": [f"return {_expr_to_str(ifexp.body)}"],
-                        "line": getattr(s, "lineno", 1),
-                    })
-                    edges.append({"source": cond_id, "target": then_id, "type": "true", "label": "True"})
-                    edges.append({"source": then_id, "target": exit_id, "type": "return", "label": "Return"})
-
-                    else_id = make_id("ELSE")
-                    nodes.append({
-                        "id": else_id,
-                        "label": "IfExp False",
-                        "type": "statement",
-                        "instructions": [f"return {_expr_to_str(ifexp.orelse)}"],
-                        "line": getattr(s, "lineno", 1),
-                    })
-                    edges.append({"source": cond_id, "target": else_id, "type": "false", "label": "False"})
-                    edges.append({"source": else_id, "target": exit_id, "type": "return", "label": "Return"})
-                    curr = None
-                else:
-                    ret_str = f"return {_expr_to_str(s.value)}" if s.value else "return"
-                    for b in nodes:
-                        if b["id"] == curr:
-                            b["instructions"].append(ret_str)
-                            break
-                    edges.append({"source": curr, "target": exit_id, "type": "return", "label": "Return"})
-                    curr = None
-
-            elif next((n for n in ast.walk(s) if isinstance(n, ast.IfExp)), None):
-                ifexp = next((n for n in ast.walk(s) if isinstance(n, ast.IfExp)), None)
-                cond_str = _expr_to_str(ifexp.test)
-                cond_id = make_id("COND")
-                nodes.append({
-                    "id": cond_id,
-                    "label": f"IfExp ({cond_str})",
-                    "type": "condition",
-                    "instructions": [f"if {cond_str}:"],
-                    "line": getattr(s, "lineno", 1),
-                })
-                edges.append({"source": curr, "target": cond_id, "type": "fallthrough", "label": ""})
-
-                join_id = make_id("JOIN")
-                nodes.append({
-                    "id": join_id,
-                    "label": "Join IfExp",
-                    "type": "join",
-                    "instructions": [],
-                    "line": getattr(s, "lineno", 1),
-                })
-
-                then_id = make_id("THEN")
-                nodes.append({
-                    "id": then_id,
-                    "label": "IfExp True",
-                    "type": "statement",
-                    "instructions": [_expr_to_str(s)],
-                    "line": getattr(s, "lineno", 1),
-                })
-                edges.append({"source": cond_id, "target": then_id, "type": "true", "label": "True"})
-                edges.append({"source": then_id, "target": join_id, "type": "fallthrough", "label": ""})
-
-                else_id = make_id("ELSE")
-                nodes.append({
-                    "id": else_id,
-                    "label": "IfExp False",
-                    "type": "statement",
-                    "instructions": [_expr_to_str(s)],
-                    "line": getattr(s, "lineno", 1),
-                })
-                edges.append({"source": cond_id, "target": else_id, "type": "false", "label": "False"})
-                edges.append({"source": else_id, "target": join_id, "type": "fallthrough", "label": ""})
-                curr = join_id
+                ret_str = f"return {_expr_to_str(s.value)}" if s.value else "return"
+                for b in nodes:
+                    if b["id"] == curr:
+                        b["instructions"].append(ret_str)
+                        break
+                edges.append({"source": curr, "target": exit_id, "type": "return", "label": "Return"})
+                curr = None
 
             else:
                 stmt_str = _expr_to_str(s)
@@ -336,7 +261,7 @@ def _build_python_cfg(fn_node: ast.FunctionDef) -> Dict[str, Any]:
 
         return curr
 
-    final_id = process_body(fn_node.body, start_body_id)
+    final_id = process_body(stmts, start_body_id)
     if final_id:
         edges.append({"source": final_id, "target": exit_id, "type": "fallthrough", "label": ""})
 
@@ -359,7 +284,7 @@ def _build_python_cfg(fn_node: ast.FunctionDef) -> Dict[str, Any]:
     mccabe_cc = max(1, e_count - n_count + 2)
 
     return {
-        "function": fn_node.name,
+        "function": name,
         "returnType": "def",
         "nodes": pruned_nodes,
         "edges": pruned_edges,
@@ -369,8 +294,19 @@ def _build_python_cfg(fn_node: ast.FunctionDef) -> Dict[str, Any]:
     }
 
 
+def _build_python_cfg(fn_node: ast.FunctionDef) -> Dict[str, Any]:
+    param_str = ", ".join(a.arg for a in fn_node.args.args)
+    return _build_python_cfg_from_stmts(
+        fn_node.name,
+        param_str,
+        fn_node.body,
+        fn_node.lineno,
+        getattr(fn_node, "end_lineno", fn_node.lineno),
+    )
+
+
 def analyze_python_source(source: str) -> Dict[str, Any]:
-    """Analyzes Python code end-to-end producing all metrics and artifacts."""
+    """Analyzes Python code end-to-end producing all metrics, symbol table and semantic diagnostics."""
     tokens = _tokenize_python(source)
 
     try:
@@ -379,12 +315,53 @@ def analyze_python_source(source: str) -> Dict[str, Any]:
         try:
             tree = ast.parse(textwrap.dedent(source))
         except SyntaxError as e:
-            raise SyntaxError(f"Line {e.lineno}, Col {e.offset}: {e.msg}")
+            # Return structured error diagnostic rather than crashing
+            diag = {
+                "severity": "error",
+                "message": f"SyntaxError: {e.msg}",
+                "line": e.lineno or 1,
+                "col": e.offset or 1,
+                "rule": "syntax-error",
+            }
+            total_loc = len([l for l in source.splitlines() if l.strip()])
+            prog_metrics = {
+                "functions": 0, "variables": 0, "ifs": 0, "fors": 0, "whiles": 0, "switches": 0, "returns": 0,
+                "maxNesting": 0, "cyclomatic": 1, "avgCyclomatic": 1.0, "complexityLevel": "Low",
+                "loc": total_loc, "mostComplexFunction": "", "maxFunctionComplexity": 0,
+            }
+            return {
+                "tokens": tokens,
+                "ast": {"type": "Program", "functions": [], "line": 1, "col": 1},
+                "metrics": {**prog_metrics, "program": prog_metrics, "perFunction": [], "functionList": []},
+                "symbolTable": {"hierarchy": {"scopeId": 0, "name": "global", "scopeType": "global", "level": 0, "symbols": []}, "flatSymbols": [], "totalSymbols": 0, "totalScopes": 1},
+                "diagnostics": [diag],
+                "cfgs": {},
+                "codeSmells": [],
+                "quality": {"score": 0, "grade": "F", "description": "Critical syntax error: code cannot be parsed"},
+            }
+
+    # Extract top-level statements vs functions/classes
+    func_nodes = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    top_level_stmts = [n for n in tree.body if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
 
     # Build compatible AST dict
+    ast_functions = [_ast_to_dict(n) for n in func_nodes]
+    if top_level_stmts:
+        top_name = "main" if not any(f.name in ("main", "Main") for f in func_nodes) else "<module>"
+        first_line = top_level_stmts[0].lineno if hasattr(top_level_stmts[0], "lineno") else 1
+        ast_functions.insert(0, {
+            "type": "FunctionDecl",
+            "name": top_name,
+            "returnType": "void",
+            "params": [],
+            "body": {"type": "Block", "statements": [_ast_to_dict(s) for s in top_level_stmts], "line": first_line, "col": 1},
+            "line": first_line,
+            "col": 1,
+        })
+
     ast_dict = {
         "type": "Program",
-        "functions": [_ast_to_dict(n) for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))],
+        "functions": ast_functions,
         "line": 1,
         "col": 1,
     }
@@ -402,50 +379,190 @@ def analyze_python_source(source: str) -> Dict[str, Any]:
     all_smells = []
     smell_id = 1
 
-    # Collect all called function names across the entire module
-    all_calls = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call):
-            if isinstance(node.func, ast.Name):
-                fname = node.func.id
-                all_calls[fname] = all_calls.get(fname, 0) + 1
-            elif isinstance(node.func, ast.Attribute):
-                attr_name = node.func.attr
-                all_calls[attr_name] = all_calls.get(attr_name, 0) + 1
+    # Global symbol registry
+    global_syms = {}
 
-    # Extract functions and register in global symbol table
-    func_nodes = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    # Register imports
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                mname = alias.asname or alias.name
+                global_syms[mname] = {
+                    "name": mname, "type": "module", "kind": "import",
+                    "scopeId": 0, "scopeName": "global",
+                    "line": node.lineno, "col": getattr(node, "col_offset", 0) + 1,
+                    "isUsed": False, "usageCount": 0, "firstUse": None, "references": []
+                }
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                mname = alias.asname or alias.name
+                global_syms[mname] = {
+                    "name": mname, "type": "Any", "kind": "import",
+                    "scopeId": 0, "scopeName": "global",
+                    "line": node.lineno, "col": getattr(node, "col_offset", 0) + 1,
+                    "isUsed": False, "usageCount": 0, "firstUse": None, "references": []
+                }
+
+    # Register classes
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            global_syms[node.name] = {
+                "name": node.name, "type": "class", "kind": "class",
+                "scopeId": 0, "scopeName": "global",
+                "line": node.lineno, "col": getattr(node, "col_offset", 0) + 1,
+                "isUsed": False, "usageCount": 0, "firstUse": None, "references": []
+            }
+
+    # Register functions
     for fn in func_nodes:
-        call_count = all_calls.get(fn.name, 0)
-        is_fn_used = call_count > 0 or fn.name == "main"
-        fn_sym = {
+        global_syms[fn.name] = {
             "name": fn.name,
             "type": _expr_to_str(fn.returns) if getattr(fn, "returns", None) else "def",
             "kind": "function",
-            "scopeId": 0,
-            "scopeName": "global",
-            "line": fn.lineno,
-            "col": getattr(fn, "col_offset", 0) + 1,
-            "isUsed": is_fn_used,
-            "usageCount": max(call_count, 1 if fn.name == "main" else 0),
-            "firstUse": {"line": fn.lineno} if is_fn_used else None,
-            "references": [{"line": fn.lineno, "col": 1, "kind": "entrypoint" if fn.name == "main" else "call"}] if is_fn_used else [],
+            "scopeId": 0, "scopeName": "global",
+            "line": fn.lineno, "col": getattr(fn, "col_offset", 0) + 1,
+            "isUsed": (fn.name == "main"),
+            "usageCount": 1 if fn.name == "main" else 0,
+            "firstUse": {"line": fn.lineno} if fn.name == "main" else None,
+            "references": [{"line": fn.lineno, "col": 1, "kind": "entrypoint"}] if fn.name == "main" else []
         }
-        scopes[0]["symbols"].append(fn_sym)
-        flat_symbols.append(fn_sym)
 
+    # Register module-level variables
+    for node in top_level_stmts:
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = []
+            if isinstance(node, ast.Assign): targets = node.targets
+            elif isinstance(node, ast.AugAssign): targets = [node.target]
+            elif isinstance(node, ast.AnnAssign): targets = [node.target]
+            for tgt in targets:
+                for n in ast.walk(tgt):
+                    if isinstance(n, ast.Name):
+                        vname = n.id
+                        vtype = "Any"
+                        val = getattr(node, "value", None)
+                        if isinstance(val, ast.Constant):
+                            vtype = type(val.value).__name__
+                        elif isinstance(val, ast.List): vtype = "list"
+                        elif isinstance(val, ast.Dict): vtype = "dict"
+                        elif isinstance(val, ast.Set): vtype = "set"
+                        elif isinstance(val, ast.Tuple): vtype = "tuple"
+                        if vname not in global_syms:
+                            global_syms[vname] = {
+                                "name": vname, "type": vtype, "kind": "variable",
+                                "scopeId": 0, "scopeName": "global",
+                                "line": n.lineno, "col": getattr(n, "col_offset", 0) + 1,
+                                "isUsed": False, "usageCount": 0, "firstUse": None, "references": []
+                            }
+
+    # Analyze Top-Level Statements (if any)
+    if top_level_stmts:
+        top_cc = 1
+        top_ifs = 0
+        top_fors = 0
+        top_whiles = 0
+        top_max_nesting = 0
+        top_vars_set = set()
+
+        for stmt in top_level_stmts:
+            for node in ast.walk(stmt):
+                if isinstance(node, ast.If):
+                    top_cc += 1
+                    top_ifs += 1
+                elif isinstance(node, (ast.For, ast.AsyncFor)):
+                    top_cc += 1
+                    top_fors += 1
+                elif isinstance(node, ast.While):
+                    top_cc += 1
+                    top_whiles += 1
+                elif isinstance(node, ast.ExceptHandler):
+                    top_cc += 1
+                elif isinstance(node, ast.BoolOp):
+                    top_cc += len(node.values) - 1
+                elif isinstance(node, ast.IfExp):
+                    top_cc += 1
+                elif isinstance(node, ast.Name):
+                    if isinstance(node.ctx, ast.Store):
+                        top_vars_set.add(node.id)
+                    elif isinstance(node.ctx, ast.Load):
+                        # Loaded name check
+                        nid = node.id
+                        if nid in global_syms:
+                            global_syms[nid]["isUsed"] = True
+                            global_syms[nid]["usageCount"] += 1
+                            if not global_syms[nid]["firstUse"]:
+                                global_syms[nid]["firstUse"] = {"line": node.lineno}
+                            global_syms[nid]["references"].append({
+                                "line": node.lineno, "col": getattr(node, "col_offset", 0) + 1, "kind": "read"
+                            })
+                        elif nid in PYTHON_BUILTINS:
+                            pass
+                        else:
+                            diagnostics.append({
+                                "severity": "error",
+                                "message": f"Use of undeclared identifier '{nid}'",
+                                "line": node.lineno,
+                                "col": getattr(node, "col_offset", 0) + 1,
+                                "rule": "undeclared-identifier",
+                            })
+
+        top_name = "main" if not any(f.name in ("main", "Main") for f in func_nodes) else "<module>"
+        first_line = top_level_stmts[0].lineno
+        last_line = getattr(top_level_stmts[-1], "end_lineno", top_level_stmts[-1].lineno)
+        top_metric = {
+            "name": top_name,
+            "returnType": "void",
+            "paramCount": 0,
+            "params": [],
+            "variables": len(top_vars_set),
+            "ifs": top_ifs,
+            "fors": top_fors,
+            "whiles": top_whiles,
+            "switches": 0,
+            "returns": 0,
+            "maxNesting": top_max_nesting,
+            "cyclomatic": top_cc,
+            "complexityLevel": _complexity_level(top_cc),
+            "startLine": first_line,
+            "endLine": last_line,
+            "loc": max(1, last_line - first_line + 1),
+            "isMostComplex": False,
+        }
+        functions_metrics.append(top_metric)
+        cfgs[top_name] = _build_python_cfg_from_stmts(top_name, "", top_level_stmts, first_line, last_line)
+        if top_cc > max_cc:
+            max_cc = top_cc
+            most_complex_fn = top_name
+
+    # Analyze Each Explicit Function
     for fn in func_nodes:
-        # Cyclomatic complexity
-        cc = 1  # Base path
+        cc = 1
         ifs = 0
         fors = 0
         whiles = 0
         returns = 0
         max_nesting = 0
         vars_set = set()
-        loaded_names = set()
+        fn_syms = {}
 
-        depth = 0
+        scope_id = len(scopes)
+
+        # Register parameters
+        for a in fn.args.args:
+            fn_syms[a.arg] = {
+                "name": a.arg,
+                "type": "Any",
+                "kind": "parameter",
+                "scopeId": scope_id,
+                "scopeName": fn.name,
+                "line": a.lineno,
+                "col": getattr(a, "col_offset", 0) + 1,
+                "isUsed": False,
+                "usageCount": 0,
+                "firstUse": None,
+                "references": [],
+            }
+
+        # Track AST nodes inside function
         for node in ast.walk(fn):
             if isinstance(node, ast.If):
                 cc += 1
@@ -465,12 +582,52 @@ def analyze_python_source(source: str) -> Dict[str, Any]:
             elif isinstance(node, ast.Return):
                 returns += 1
             elif isinstance(node, ast.Name):
+                nid = node.id
                 if isinstance(node.ctx, ast.Store):
-                    vars_set.add(node.id)
+                    vars_set.add(nid)
+                    if nid not in fn_syms:
+                        fn_syms[nid] = {
+                            "name": nid,
+                            "type": "Any",
+                            "kind": "variable",
+                            "scopeId": scope_id,
+                            "scopeName": fn.name,
+                            "line": node.lineno,
+                            "col": getattr(node, "col_offset", 0) + 1,
+                            "isUsed": False,
+                            "usageCount": 0,
+                            "firstUse": None,
+                            "references": [],
+                        }
                 elif isinstance(node.ctx, ast.Load):
-                    loaded_names.add(node.id)
+                    if nid in fn_syms:
+                        fn_syms[nid]["isUsed"] = True
+                        fn_syms[nid]["usageCount"] += 1
+                        if not fn_syms[nid]["firstUse"]:
+                            fn_syms[nid]["firstUse"] = {"line": node.lineno}
+                        fn_syms[nid]["references"].append({
+                            "line": node.lineno, "col": getattr(node, "col_offset", 0) + 1, "kind": "read"
+                        })
+                    elif nid in global_syms:
+                        global_syms[nid]["isUsed"] = True
+                        global_syms[nid]["usageCount"] += 1
+                        if not global_syms[nid]["firstUse"]:
+                            global_syms[nid]["firstUse"] = {"line": node.lineno}
+                        global_syms[nid]["references"].append({
+                            "line": node.lineno, "col": getattr(node, "col_offset", 0) + 1, "kind": "read"
+                        })
+                    elif nid in PYTHON_BUILTINS:
+                        pass
+                    else:
+                        diagnostics.append({
+                            "severity": "error",
+                            "message": f"Use of undeclared identifier '{nid}'",
+                            "line": node.lineno,
+                            "col": getattr(node, "col_offset", 0) + 1,
+                            "rule": "undeclared-identifier",
+                        })
 
-        # Track nesting depth recursively
+        # Function nesting calculation
         def check_nesting(node, current_depth):
             nonlocal max_nesting
             if isinstance(node, (ast.If, ast.For, ast.While, ast.Try, ast.With)):
@@ -482,14 +639,14 @@ def analyze_python_source(source: str) -> Dict[str, Any]:
         check_nesting(fn, 0)
 
         loc = max(1, getattr(fn, "end_lineno", fn.lineno) - fn.lineno + 1)
-        params = [a.arg for a in fn.args.args]
-        total_vars = len(vars_set) + len(params)
+        params_list = [a.arg for a in fn.args.args]
+        total_vars = len(vars_set) + len(params_list)
 
         f_metric = {
             "name": fn.name,
             "returnType": "def",
-            "paramCount": len(params),
-            "params": [{"name": p, "varType": "Any"} for p in params],
+            "paramCount": len(params_list),
+            "params": [{"name": p, "varType": "Any"} for p in params_list],
             "variables": total_vars,
             "ifs": ifs,
             "fors": fors,
@@ -505,114 +662,63 @@ def analyze_python_source(source: str) -> Dict[str, Any]:
             "isMostComplex": False,
         }
         functions_metrics.append(f_metric)
+        cfgs[fn.name] = _build_python_cfg(fn)
 
         if cc > max_cc:
             max_cc = cc
             most_complex_fn = fn.name
 
-        # CFG for this function
-        cfgs[fn.name] = _build_python_cfg(fn)
-
-        # Symbols for this function
-        scope_id = len(scopes)
-        fn_syms = []
-        for p in params:
-            is_used = p in loaded_names
-            sym = {
-                "name": p,
-                "type": "Any",
-                "kind": "parameter",
-                "scopeId": scope_id,
-                "scopeName": fn.name,
-                "line": fn.lineno,
-                "col": 1,
-                "isUsed": is_used,
-                "usageCount": 1 if is_used else 0,
-                "firstUse": {"line": fn.lineno} if is_used else None,
-            }
-            fn_syms.append(sym)
+        # Scope symbols and diagnostics for function
+        fn_sym_list = list(fn_syms.values())
+        for sym in fn_sym_list:
             flat_symbols.append(sym)
-            if not is_used and p != "self" and p != "cls":
-                diagnostics.append({
-                    "severity": "warning",
-                    "message": f"Unused parameter '{p}' in function '{fn.name}'",
-                    "line": fn.lineno,
-                    "col": 1,
-                    "rule": "unused-parameter",
-                })
-
-        for v in vars_set:
-            is_used = v in loaded_names
-            sym = {
-                "name": v,
-                "type": "Any",
-                "kind": "variable",
-                "scopeId": scope_id,
-                "scopeName": fn.name,
-                "line": fn.lineno,
-                "col": 1,
-                "isUsed": is_used,
-                "usageCount": 1 if is_used else 0,
-                "firstUse": {"line": fn.lineno} if is_used else None,
-            }
-            fn_syms.append(sym)
-            flat_symbols.append(sym)
-            if not is_used and not v.startswith("_"):
-                diagnostics.append({
-                    "severity": "warning",
-                    "message": f"Unused variable '{v}' declared in function '{fn.name}'",
-                    "line": fn.lineno,
-                    "col": 1,
-                    "rule": "unused-variable",
-                })
+            if not sym["isUsed"]:
+                if sym["kind"] == "parameter" and sym["name"] not in ("self", "cls"):
+                    diagnostics.append({
+                        "severity": "warning",
+                        "message": f"Unused parameter '{sym['name']}' declared in function '{fn.name}'",
+                        "line": sym["line"],
+                        "col": sym["col"],
+                        "rule": "unused-parameter",
+                    })
+                elif sym["kind"] == "variable" and not sym["name"].startswith("_"):
+                    diagnostics.append({
+                        "severity": "warning",
+                        "message": f"Unused variable '{sym['name']}' declared in function '{fn.name}'",
+                        "line": sym["line"],
+                        "col": sym["col"],
+                        "rule": "unused-variable",
+                    })
 
         scopes.append({
             "scopeId": scope_id,
             "name": fn.name,
             "scopeType": "function",
             "level": 1,
-            "symbols": fn_syms,
+            "symbols": fn_sym_list,
         })
 
-        # Code Smells
-        if loc > 25:
-            all_smells.append({
-                "id": f"SMELL_{smell_id:03d}",
-                "category": "Long Function",
-                "severity": "Critical" if loc > 40 else "High",
-                "function": fn.name,
-                "line": fn.lineno,
-                "description": f"Python function '{fn.name}' is {loc} lines long (threshold: 25 lines).",
-                "suggestion": "Extract Method: Decompose this function into smaller helper functions with single responsibilities.",
-                "examplePattern": f"# Split def {fn.name}() into cohesive helper functions",
-            })
-            smell_id += 1
-
-        if max_nesting >= 3:
-            all_smells.append({
-                "id": f"SMELL_{smell_id:03d}",
-                "category": "Deep Nesting",
-                "severity": "High" if max_nesting >= 4 else "Medium",
-                "function": fn.name,
-                "line": fn.lineno,
-                "description": f"Function '{fn.name}' has nesting depth of {max_nesting} (threshold: 3 levels).",
-                "suggestion": "Flatten Control Flow: Invert condition checks with early returns / guard clauses or list comprehensions.",
-                "examplePattern": "# Replace nested if with guard clauses:\n# if not condition: return",
-            })
-            smell_id += 1
-
-        if cc > 10:
-            all_smells.append({
-                "id": f"SMELL_{smell_id:03d}",
-                "category": "High Cyclomatic Complexity",
-                "severity": "Critical" if cc > 15 else "High",
-                "function": fn.name,
-                "line": fn.lineno,
-                "description": f"Function '{fn.name}' has cyclomatic complexity of {cc} (threshold: 10).",
-                "suggestion": "Decompose Decisions: Replace complex branching with dictionary dispatch tables or helper functions.",
-                "examplePattern": "# Use dictionary dispatch table:\n# dispatch = {'case1': handler1, 'case2': handler2}",
-            })
-            smell_id += 1
+    # Global symbols reporting
+    for sym in global_syms.values():
+        flat_symbols.append(sym)
+        scopes[0]["symbols"].append(sym)
+        if not sym["isUsed"]:
+            if sym["kind"] == "variable" and not sym["name"].startswith("_"):
+                diagnostics.append({
+                    "severity": "warning",
+                    "message": f"Unused variable '{sym['name']}' declared in global scope",
+                    "line": sym["line"],
+                    "col": sym["col"],
+                    "rule": "unused-variable",
+                })
+            elif sym["kind"] == "function" and sym["name"] not in ("main", "<module>"):
+                diagnostics.append({
+                    "severity": "warning",
+                    "message": f"Unused function '{sym['name']}' declared in global scope",
+                    "line": sym["line"],
+                    "col": sym["col"],
+                    "rule": "unused-function",
+                })
 
     # Mark most complex function
     for f in functions_metrics:
@@ -627,7 +733,7 @@ def analyze_python_source(source: str) -> Dict[str, Any]:
     total_whiles = sum(f["whiles"] for f in functions_metrics)
     total_returns = sum(f["returns"] for f in functions_metrics)
     total_cc = sum(f["cyclomatic"] for f in functions_metrics)
-    avg_cc = round(total_cc / total_funcs, 1) if total_funcs > 0 else 0
+    avg_cc = round(total_cc / total_funcs, 1) if total_funcs > 0 else 1.0
     max_nest = max((f["maxNesting"] for f in functions_metrics), default=0)
 
     prog_metrics = {
@@ -639,9 +745,9 @@ def analyze_python_source(source: str) -> Dict[str, Any]:
         "switches": 0,
         "returns": total_returns,
         "maxNesting": max_nest,
-        "cyclomatic": total_cc,
+        "cyclomatic": total_cc if total_cc > 0 else 1,
         "avgCyclomatic": avg_cc,
-        "complexityLevel": _complexity_level(total_cc),
+        "complexityLevel": _complexity_level(total_cc if total_cc > 0 else 1),
         "loc": total_loc,
         "mostComplexFunction": most_complex_fn,
         "maxFunctionComplexity": max_cc,
@@ -655,8 +761,8 @@ def analyze_python_source(source: str) -> Dict[str, Any]:
         score -= min(10, int((avg_cc - 5) * 2))
     if max_nest >= 3:
         score -= min(15, (max_nest - 2) * 5)
-    score -= len([d for d in diagnostics if d["severity"] == "error"]) * 12
-    score -= len([d for d in diagnostics if d["severity"] == "warning"]) * 2
+    score -= len([d for d in diagnostics if d["severity"] == "error"]) * 15
+    score -= len([d for d in diagnostics if d["severity"] == "warning"]) * 3
     for s in all_smells:
         if s["severity"] == "Critical": score -= 10
         elif s["severity"] == "High": score -= 6

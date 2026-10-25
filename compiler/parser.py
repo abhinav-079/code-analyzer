@@ -63,10 +63,40 @@ class Parser:
             return True
         if t.type == "IDENTIFIER":
             next1 = self.peek(1)
+            # Simple type followed by identifier: "int x" / "MyType x" or pointer/reference: "MyType* x"
             if next1.type == "IDENTIFIER" or next1.value in ("*", "&"):
                 return True
+            # Array type: "String[] args"
             if next1.value == "[" and self.peek(2).value == "]":
                 return True
+
+            # Scope resolution (std::string s) or templates (vector<int> v)
+            if next1.value in ("::", "<"):
+                idx = self.pos + 1
+                while idx < len(self.toks) and self.toks[idx].value == "::":
+                    idx += 1
+                    if idx < len(self.toks) and self.toks[idx].type == "IDENTIFIER":
+                        idx += 1
+                    else:
+                        return False
+                if idx < len(self.toks) and self.toks[idx].value == "<":
+                    depth = 1
+                    idx += 1
+                    while idx < len(self.toks) and depth > 0:
+                        if self.toks[idx].value == "<":
+                            depth += 1
+                        elif self.toks[idx].value == ">":
+                            depth -= 1
+                        elif self.toks[idx].value == ">>":
+                            depth -= 2
+                        idx += 1
+                while idx + 1 < len(self.toks) and self.toks[idx].value == "[" and self.toks[idx + 1].value == "]":
+                    idx += 2
+                while idx < len(self.toks) and self.toks[idx].value in ("*", "&"):
+                    idx += 1
+                if idx < len(self.toks) and self.toks[idx].type == "IDENTIFIER":
+                    return True
+                return False
         return False
 
     def at(self, type_, value=None):
@@ -102,6 +132,27 @@ class Parser:
             base_type = self.advance().value
         else:
             base_type = "void"
+
+        # Scope resolution in type e.g. std::string, std::vector
+        while self.at("OPERATOR", "::"):
+            self.advance()
+            base_type += "::" + self.expect("IDENTIFIER").value
+
+        # Generic / template parameters e.g. vector<int>, List<String>, vector<vector<int>>
+        if self.at("OPERATOR", "<"):
+            self.advance()
+            template_depth = 1
+            template_str = "<"
+            while template_depth > 0 and not self.at("EOF"):
+                tok = self.advance()
+                if tok.value == "<":
+                    template_depth += 1
+                elif tok.value == ">":
+                    template_depth -= 1
+                elif tok.value == ">>":
+                    template_depth -= 2
+                template_str += tok.value
+            base_type += template_str
 
         # Compound types like "unsigned int", "long long", "long double"
         while self.at("KEYWORD") and self.peek().value in ("int", "long", "short", "char", "double", "float"):
@@ -175,17 +226,42 @@ class Parser:
         if self.pos + lookahead < len(self.toks) and self.toks[self.pos + lookahead].type == "IDENTIFIER":
             if self.pos + lookahead + 1 < len(self.toks) and self.toks[self.pos + lookahead + 1].type == "IDENTIFIER":
                 lookahead += 1
-        return (
+
+        if not (
             self.pos + lookahead < len(self.toks)
             and self.toks[self.pos + lookahead].type == "IDENTIFIER"
             and self.pos + lookahead + 1 < len(self.toks)
             and self.toks[self.pos + lookahead + 1].value == "("
-        )
+        ):
+            return False
+
+        # Verify that matching ')' is eventually followed by '{' (function body)
+        idx = self.pos + lookahead + 2
+        paren_depth = 1
+        while idx < len(self.toks) and paren_depth > 0:
+            if self.toks[idx].value == "(":
+                paren_depth += 1
+            elif self.toks[idx].value == ")":
+                paren_depth -= 1
+            idx += 1
+
+        if paren_depth != 0:
+            return False
+
+        while idx < len(self.toks) and (
+            self.toks[idx].value in ("const", "noexcept", "override", "final", "throws", ",")
+            or (idx > 0 and self.toks[idx - 1].value == "throws" and self.toks[idx].type == "IDENTIFIER")
+        ):
+            idx += 1
+
+        return idx < len(self.toks) and self.toks[idx].value == "{"
 
     # -- grammar -------------------------------------------------------
     def parse_program(self):
         functions = []
         global_declarations = []
+        top_level_stmts = []
+
         while self.pos < len(self.toks):
             # Skip package, import, using statements
             if self.at("KEYWORD", "package") or self.at("KEYWORD", "import") or self.at("KEYWORD", "using"):
@@ -222,10 +298,36 @@ class Parser:
                 decl_stmts = self.parse_declaration()
                 if isinstance(decl_stmts, list):
                     global_declarations.extend(decl_stmts)
+                    top_level_stmts.extend(decl_stmts)
                 elif decl_stmts:
                     global_declarations.append(decl_stmts)
+                    top_level_stmts.append(decl_stmts)
             else:
-                self.advance()
+                # Top-level executable statement (e.g. JavaScript script mode)
+                stmt = self.parse_statement()
+                if stmt:
+                    top_level_stmts.append(stmt)
+
+        # If there are top-level executable statements outside any function:
+        # Wrap them in a synthetic "main" function if no main exists
+        has_main = any(f.get("name") in ("main", "Main") or f.get("name", "").endswith(".main") for f in functions)
+        if top_level_stmts and not has_main:
+            first_line = top_level_stmts[0].get("line", 1)
+            functions.append({
+                "type": "FunctionDecl",
+                "name": "main",
+                "returnType": "void",
+                "params": [],
+                "body": {
+                    "type": "Block",
+                    "statements": top_level_stmts,
+                    "line": first_line,
+                    "col": 1,
+                },
+                "line": first_line,
+                "col": 1,
+            })
+            global_declarations = []
 
         return {
             "type": "Program",
@@ -406,6 +508,12 @@ class Parser:
             return {"type": "Continue", "line": tok.line, "col": tok.col}
         if self.at("KEYWORD", "return"):
             return self.parse_return()
+        if self.at("KEYWORD", "using") or self.at("KEYWORD", "import") or self.at("KEYWORD", "package"):
+            while not self.at("DELIMITER", ";") and not self.at("EOF"):
+                self.advance()
+            if self.at("DELIMITER", ";"):
+                self.advance()
+            return None
         if self.is_type():
             return self.parse_declaration()
         return self.parse_expr_statement()
@@ -774,8 +882,23 @@ class Parser:
         return left
 
     def parse_relational(self):
-        left = self.parse_additive()
+        left = self.parse_shift()
         while any(self.at("OPERATOR", o) for o in ("<", ">", "<=", ">=")):
+            op_tok = self.advance()
+            right = self.parse_shift()
+            left = {
+                "type": "BinaryExpr",
+                "op": op_tok.value,
+                "left": left,
+                "right": right,
+                "line": op_tok.line,
+                "col": op_tok.col,
+            }
+        return left
+
+    def parse_shift(self):
+        left = self.parse_additive()
+        while any(self.at("OPERATOR", o) for o in ("<<", ">>")):
             op_tok = self.advance()
             right = self.parse_additive()
             left = {
@@ -962,10 +1085,25 @@ class Parser:
 
     def parse_primary(self):
         t = self.peek()
-        # new ClassName(...)
+        # new ClassName(...) or new Type[size]
         if t.type == "KEYWORD" and t.value == "new":
             new_tok = self.advance()
-            callee_name = self.expect("IDENTIFIER").value
+            callee_tok = self.advance()
+            callee_name = callee_tok.value
+            while self.at("OPERATOR", "::"):
+                self.advance()
+                callee_name += "::" + self.expect("IDENTIFIER").value
+            if self.at("OPERATOR", "<"):
+                self.advance()
+                depth = 1
+                while depth > 0 and not self.at("EOF"):
+                    tok = self.advance()
+                    if tok.value == "<":
+                        depth += 1
+                    elif tok.value == ">":
+                        depth -= 1
+                    elif tok.value == ">>":
+                        depth -= 2
             args = []
             if self.at("DELIMITER", "("):
                 self.advance()
@@ -974,6 +1112,12 @@ class Parser:
                     if self.at("DELIMITER", ","):
                         self.advance()
                 self.expect("DELIMITER", ")")
+            elif self.at("DELIMITER", "["):
+                while self.at("DELIMITER", "["):
+                    self.advance()
+                    if not self.at("DELIMITER", "]"):
+                        args.append(self.parse_expr())
+                    self.expect("DELIMITER", "]")
             return {
                 "type": "Call",
                 "callee": f"new {callee_name}",

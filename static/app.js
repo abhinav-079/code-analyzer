@@ -416,11 +416,11 @@ function drawCfgForFunction(cfg) {
   // Define Arrowhead Markers
   const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
   const markers = [
-    ["arrow-default", "#9b1d3d"],
-    ["arrow-true", "#48bb78"],
-    ["arrow-false", "#f56565"],
-    ["arrow-loop", "#ed8936"],
-    ["arrow-return", "#9f7aea"]
+    ["arrow-default", "#800020"],
+    ["arrow-true", "#000000"],
+    ["arrow-false", "#800020"],
+    ["arrow-loop", "#800020"],
+    ["arrow-return", "#000000"]
   ];
   markers.forEach(([id, color]) => {
     const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
@@ -520,11 +520,11 @@ function drawCfgForFunction(cfg) {
     if (!src || !tgt) return;
 
     let markerId = "arrow-default";
-    let strokeColor = "#9b1d3d";
-    if (edge.type === "true" || edge.label === "True") { markerId = "arrow-true"; strokeColor = "#48bb78"; }
-    else if (edge.type === "false" || edge.label === "False") { markerId = "arrow-false"; strokeColor = "#f56565"; }
-    else if (edge.type === "loop_back" || edge.label === "Loop") { markerId = "arrow-loop"; strokeColor = "#ed8936"; }
-    else if (edge.type === "return" || edge.label === "Return") { markerId = "arrow-return"; strokeColor = "#9f7aea"; }
+    let strokeColor = "#000000";
+    if (edge.type === "true" || edge.label === "True") { markerId = "arrow-true"; strokeColor = "#000000"; }
+    else if (edge.type === "false" || edge.label === "False") { markerId = "arrow-false"; strokeColor = "#800020"; }
+    else if (edge.type === "loop_back" || edge.label === "Loop") { markerId = "arrow-loop"; strokeColor = "#800020"; }
+    else if (edge.type === "return" || edge.label === "Return") { markerId = "arrow-return"; strokeColor = "#000000"; }
 
     const x1 = src.x + src.w / 2;
     const y1 = src.y + src.h;
@@ -545,7 +545,7 @@ function drawCfgForFunction(cfg) {
 
     path.setAttribute("fill", "none");
     path.setAttribute("stroke", strokeColor);
-    path.setAttribute("stroke-width", "2");
+    path.setAttribute("stroke-width", "1.75");
     path.setAttribute("marker-end", `url(#${markerId})`);
     g.appendChild(path);
 
@@ -561,7 +561,7 @@ function drawCfgForFunction(cfg) {
       labelBg.setAttribute("width", edge.label.length * 7 + 10);
       labelBg.setAttribute("height", 16);
       labelBg.setAttribute("rx", 4);
-      labelBg.setAttribute("fill", "#101016");
+      labelBg.setAttribute("fill", "#ffffff");
       labelBg.setAttribute("stroke", strokeColor);
       labelBg.setAttribute("stroke-width", 1);
       g.appendChild(labelBg);
@@ -571,7 +571,7 @@ function drawCfgForFunction(cfg) {
       lbl.setAttribute("y", ly + 1);
       lbl.setAttribute("fill", strokeColor);
       lbl.setAttribute("font-size", "10px");
-      lbl.setAttribute("font-family", "'SF Pro Display', 'SF Pro Text', 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif");
+      lbl.setAttribute("font-family", "var(--sf-pro)");
       lbl.setAttribute("font-weight", "700");
       lbl.textContent = edge.label;
       g.appendChild(lbl);
@@ -581,14 +581,14 @@ function drawCfgForFunction(cfg) {
   // Draw Block Nodes
   nodes.forEach(node => {
     const pos = nodePositions[node.id];
-    let fill = "#14141c";
-    let stroke = "#272733";
-    let tagColor = "#9aa1bc";
+    let fill = "#ffffff";
+    let stroke = "#e5e7eb";
+    let tagColor = "#000000";
 
-    if (node.type === "entry") { fill = "#1a1016"; stroke = "#9b1d3d"; tagColor = "#9b1d3d"; }
-    else if (node.type === "condition") { fill = "#2d2417"; stroke = "#ed8936"; tagColor = "#f6ad55"; }
-    else if (node.type === "exit") { fill = "#271b33"; stroke = "#9f7aea"; tagColor = "#b794f4"; }
-    else if (node.type === "join") { fill = "#182233"; stroke = "#4299e1"; tagColor = "#63b3ed"; }
+    if (node.type === "entry") { stroke = "#800020"; tagColor = "#800020"; }
+    else if (node.type === "condition") { stroke = "#000000"; tagColor = "#000000"; }
+    else if (node.type === "exit") { stroke = "#800020"; tagColor = "#800020"; }
+    else if (node.type === "join") { stroke = "#000000"; tagColor = "#000000"; }
 
     const nodeG = document.createElementNS("http://www.w3.org/2000/svg", "g");
 
@@ -600,8 +600,8 @@ function drawCfgForFunction(cfg) {
     rect.setAttribute("rx", "8");
     rect.setAttribute("fill", fill);
     rect.setAttribute("stroke", stroke);
-    rect.setAttribute("stroke-width", "1.5");
-    rect.setAttribute("filter", "drop-shadow(0px 3px 6px rgba(0,0,0,0.3))");
+    rect.setAttribute("stroke-width", node.type === "entry" || node.type === "exit" ? "2" : "1.5");
+    rect.setAttribute("filter", "drop-shadow(0px 2px 6px rgba(0,0,0,0.06))");
     nodeG.appendChild(rect);
 
     // Node Header
@@ -611,7 +611,7 @@ function drawCfgForFunction(cfg) {
     header.setAttribute("fill", tagColor);
     header.setAttribute("font-size", "11px");
     header.setAttribute("font-weight", "700");
-    header.setAttribute("font-family", "'SF Pro Display', 'SF Pro Text', 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif");
+    header.setAttribute("font-family", "var(--sf-pro)");
     header.textContent = node.label || node.id;
     nodeG.appendChild(header);
 
@@ -620,9 +620,9 @@ function drawCfgForFunction(cfg) {
       const lineTxt = document.createElementNS("http://www.w3.org/2000/svg", "text");
       lineTxt.setAttribute("x", pos.x + 12);
       lineTxt.setAttribute("y", pos.y + 38 + iIdx * lineH);
-      lineTxt.setAttribute("fill", "#e2e8f0");
+      lineTxt.setAttribute("fill", "#000000");
       lineTxt.setAttribute("font-size", "11px");
-      lineTxt.setAttribute("font-family", "'SF Pro Display', 'SF Pro Text', 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif");
+      lineTxt.setAttribute("font-family", "var(--sf-pro)");
       lineTxt.textContent = inst.length > 27 ? inst.substring(0, 26) + "..." : inst;
       nodeG.appendChild(lineTxt);
     });
@@ -712,6 +712,7 @@ function renderDiagnostics(diagnostics) {
 
   const errCount = allDiags.filter(d => d.severity === "error").length;
   const warnCount = allDiags.filter(d => d.severity === "warning").length;
+  badge.classList.toggle("alert", errCount > 0);
 
   document.getElementById("diagCountAll").textContent = allDiags.length;
   document.getElementById("diagCountError").textContent = errCount;
@@ -1287,7 +1288,7 @@ function renderAstGraph(ast) {
 
   if (!ast || (!ast.functions || ast.functions.length === 0)) {
     svg.innerHTML = `
-      <text x="50%" y="50%" fill="#71717a" font-size="14" font-family="'SF Pro Display', 'SF Pro Text', 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif" text-anchor="middle">
+      <text x="50%" y="50%" fill="#000000" font-size="14" font-family="var(--sf-pro)" text-anchor="middle">
         No AST nodes found. Run analysis with valid code.
       </text>`;
     return;
@@ -1377,10 +1378,10 @@ function renderAstGraph(ast) {
   const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
   defs.innerHTML = `
     <marker id="astArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#9b1d3d" />
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#800020" />
     </marker>
     <filter id="astShadow" x="-10%" y="-10%" width="130%" height="130%">
-      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000000" flood-opacity="0.6"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.06"/>
     </filter>
   `;
   svg.appendChild(defs);
@@ -1399,9 +1400,9 @@ function renderAstGraph(ast) {
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("d", `M ${px} ${py} C ${px} ${midY}, ${cx} ${midY}, ${cx} ${cy}`);
     path.setAttribute("fill", "none");
-    path.setAttribute("stroke", "#9b1d3d");
-    path.setAttribute("stroke-opacity", "0.75");
-    path.setAttribute("stroke-width", "1.75");
+    path.setAttribute("stroke", "#000000");
+    path.setAttribute("stroke-opacity", "0.85");
+    path.setAttribute("stroke-width", "1.5");
     path.setAttribute("marker-end", "url(#astArrow)");
     mainG.appendChild(path);
 
@@ -1409,7 +1410,7 @@ function renderAstGraph(ast) {
     dot.setAttribute("cx", px);
     dot.setAttribute("cy", py);
     dot.setAttribute("r", "2.5");
-    dot.setAttribute("fill", "#f43f5e");
+    dot.setAttribute("fill", "#800020");
     mainG.appendChild(dot);
   });
 
@@ -1419,30 +1420,36 @@ function renderAstGraph(ast) {
     nodeG.setAttribute("class", "ast-node-card");
     nodeG.setAttribute("transform", `translate(${node.x}, ${node.y})`);
 
-    let strokeColor = "rgba(255, 255, 255, 0.12)";
-    let tagBg = "#1f1f2e";
-    let tagText = "#a1a1aa";
+    let strokeColor = "#e5e7eb";
+    let tagBg = "#ffffff";
+    let tagText = "#000000";
+    let tagBorder = "#e5e7eb";
 
     if (node.type === "root") {
-      strokeColor = "#9b1d3d";
-      tagBg = "#9b1d3d";
-      tagText = "#ffffff";
-    } else if (node.type === "function") {
-      strokeColor = "#9b1d3d";
+      strokeColor = "#800020";
       tagBg = "#800020";
-      tagText = "#f4f4f6";
-    } else if (node.type === "control") {
-      strokeColor = "rgba(155, 29, 61, 0.7)";
-      tagBg = "rgba(155, 29, 61, 0.3)";
-      tagText = "#f43f5e";
-    } else if (node.type === "branch") {
-      strokeColor = "rgba(255, 255, 255, 0.18)";
-      tagBg = "#222230";
-      tagText = "#f43f5e";
-    } else if (node.type === "call" || node.type === "return") {
-      strokeColor = "rgba(155, 29, 61, 0.5)";
-      tagBg = "rgba(155, 29, 61, 0.25)";
       tagText = "#ffffff";
+      tagBorder = "#800020";
+    } else if (node.type === "function") {
+      strokeColor = "#800020";
+      tagBg = "#ffffff";
+      tagText = "#800020";
+      tagBorder = "#800020";
+    } else if (node.type === "control") {
+      strokeColor = "#000000";
+      tagBg = "#ffffff";
+      tagText = "#000000";
+      tagBorder = "#000000";
+    } else if (node.type === "branch") {
+      strokeColor = "#d1d5db";
+      tagBg = "#ffffff";
+      tagText = "#000000";
+      tagBorder = "#d1d5db";
+    } else if (node.type === "call" || node.type === "return") {
+      strokeColor = "#800020";
+      tagBg = "#ffffff";
+      tagText = "#800020";
+      tagBorder = "#800020";
     }
 
     // Node Card Rect
@@ -1452,7 +1459,7 @@ function renderAstGraph(ast) {
     rect.setAttribute("width", nodeW);
     rect.setAttribute("height", nodeH);
     rect.setAttribute("rx", "8");
-    rect.setAttribute("fill", "#111116");
+    rect.setAttribute("fill", "#ffffff");
     rect.setAttribute("stroke", strokeColor);
     rect.setAttribute("stroke-width", "1.5");
     rect.setAttribute("filter", "url(#astShadow)");
@@ -1467,6 +1474,8 @@ function renderAstGraph(ast) {
     tagRect.setAttribute("height", "15");
     tagRect.setAttribute("rx", "3.5");
     tagRect.setAttribute("fill", tagBg);
+    tagRect.setAttribute("stroke", tagBorder);
+    tagRect.setAttribute("stroke-width", "1");
     nodeG.appendChild(tagRect);
 
     const tagLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -1474,7 +1483,7 @@ function renderAstGraph(ast) {
     tagLabel.setAttribute("y", "18");
     tagLabel.setAttribute("fill", tagText);
     tagLabel.setAttribute("font-size", "9px");
-    tagLabel.setAttribute("font-family", "'SF Pro Display', 'SF Pro Text', 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif");
+    tagLabel.setAttribute("font-family", "var(--sf-pro)");
     tagLabel.setAttribute("font-weight", "700");
     tagLabel.setAttribute("text-anchor", "middle");
     tagLabel.textContent = node.tag;
@@ -1485,10 +1494,10 @@ function renderAstGraph(ast) {
     titleText.setAttribute("class", "node-title");
     titleText.setAttribute("x", 8 + tagW + 6);
     titleText.setAttribute("y", "18.5");
-    titleText.setAttribute("fill", "#f4f4f6");
+    titleText.setAttribute("fill", "#000000");
     titleText.setAttribute("font-size", "11px");
-    titleText.setAttribute("font-family", "'SF Pro Display', 'SF Pro Text', 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif");
-    titleText.setAttribute("font-weight", "600");
+    titleText.setAttribute("font-family", "var(--sf-pro)");
+    titleText.setAttribute("font-weight", "700");
     const rawTitle = node.title || "";
     titleText.textContent = rawTitle.length > 15 ? rawTitle.substring(0, 14) + "…" : rawTitle;
     nodeG.appendChild(titleText);
@@ -1497,9 +1506,9 @@ function renderAstGraph(ast) {
     const subText = document.createElementNS("http://www.w3.org/2000/svg", "text");
     subText.setAttribute("x", "10");
     subText.setAttribute("y", "35");
-    subText.setAttribute("fill", "#a1a1aa");
+    subText.setAttribute("fill", "#111111");
     subText.setAttribute("font-size", "9.5px");
-    subText.setAttribute("font-family", "'SF Pro Display', 'SF Pro Text', 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif");
+    subText.setAttribute("font-family", "var(--sf-pro)");
     const rawSub = node.sub || "";
     subText.textContent = rawSub.length > 25 ? rawSub.substring(0, 24) + "…" : rawSub;
     nodeG.appendChild(subText);
@@ -1730,7 +1739,11 @@ function renderProjectOverview(data) {
 async function analyzeCode() {
   clearError();
   const code = srcEditor.value;
-  const lang = langSelect.value;
+  const currentFileName = (isProjectMode && projectFiles[currentFileIndex]) ? projectFiles[currentFileIndex].name : "";
+  let lang = langSelect.value;
+  if ((!lang || lang === "auto") && isProjectMode && projectFiles[currentFileIndex] && projectFiles[currentFileIndex].language) {
+    lang = projectFiles[currentFileIndex].language;
+  }
   runPipelineAnimation();
 
   let res;
@@ -1738,7 +1751,11 @@ async function analyzeCode() {
     res = await fetch("/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code, language: lang === "auto" ? null : lang }),
+      body: JSON.stringify({
+        code,
+        language: (!lang || lang === "auto") ? null : lang,
+        filename: currentFileName,
+      }),
     });
   } catch (err) {
     showError("Could not reach the analysis server.", "network");

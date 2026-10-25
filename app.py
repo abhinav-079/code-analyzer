@@ -256,7 +256,8 @@ int main() {
 
 @app.route("/")
 def index():
-    return render_template("index.html", samples=SAMPLES)
+    import time
+    return render_template("index.html", samples=SAMPLES, cache_bust=int(time.time()))
 
 
 @app.route("/analyze", methods=["POST"])
@@ -264,17 +265,12 @@ def analyze_route():
     data = request.get_json(force=True) or {}
     source = data.get("code", "")
     language = data.get("language")
+    filename = data.get("filename", "")
 
     try:
-        result = analyze_multilang(source, language=language)
+        result = analyze_multilang(source, language=language, filename=filename)
         return jsonify(result)
     except Exception as exc:
-        if language and language != "auto":
-            try:
-                fallback = analyze_multilang(source, language=None)
-                return jsonify(fallback)
-            except Exception:
-                pass
         return jsonify({
             "error": str(exc),
             "stage": "analyzer",
@@ -345,8 +341,8 @@ def analyze_project_route():
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5002))
+    port = int(os.environ.get("PORT", 5032))
     host = os.environ.get("HOST", "0.0.0.0")
-    debug = os.environ.get("FLASK_DEBUG", "0").lower() in ("1", "true")
+    debug = os.environ.get("FLASK_DEBUG", "1").lower() in ("1", "true")
     print(f"Starting Code Quality Analyzer on http://{host}:{port}")
     app.run(host=host, port=port, debug=debug) 

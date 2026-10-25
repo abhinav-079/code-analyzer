@@ -127,6 +127,56 @@ int main() {
         py_res = analyze_multilang(py_code, language="python")
         self.assertEqual(py_res["metrics"]["perFunction"][0]["cyclomatic"], 2)
 
+    def test_python_top_level_error_detection(self):
+        py_code = "a = 3\nprint(ba)\n"
+        res = analyze_multilang(py_code, language="python")
+        diags = res["diagnostics"]
+        errs = [d for d in diags if d["severity"] == "error"]
+        warns = [d for d in diags if d["severity"] == "warning"]
+        self.assertEqual(len(errs), 1)
+        self.assertIn("ba", errs[0]["message"])
+        self.assertEqual(errs[0]["rule"], "undeclared-identifier")
+        self.assertEqual(len(warns), 1)
+        self.assertIn("a", warns[0]["message"])
+        self.assertEqual(warns[0]["rule"], "unused-variable")
+
+    def test_cpp_stream_and_undeclared(self):
+        cpp_code = """#include <iostream>
+int main() {
+    int a = 10;
+    std::cout << b << std::endl;
+    return 0;
+}"""
+        res = analyze_multilang(cpp_code, language="cpp")
+        errs = [d for d in res["diagnostics"] if d["severity"] == "error"]
+        self.assertEqual(len(errs), 1)
+        self.assertIn("b", errs[0]["message"])
+
+    def test_javascript_top_level_error_detection(self):
+        js_code = "let a = 10;\nconsole.log(b);\n"
+        res = analyze_multilang(js_code, language="javascript")
+        errs = [d for d in res["diagnostics"] if d["severity"] == "error"]
+        warns = [d for d in res["diagnostics"] if d["severity"] == "warning"]
+        self.assertEqual(len(errs), 1)
+        self.assertIn("b", errs[0]["message"])
+        self.assertEqual(len(warns), 1)
+        self.assertIn("a", warns[0]["message"])
+
+    def test_java_error_detection(self):
+        java_code = """public class Test {
+    public static void main(String[] args) {
+        int a = 10;
+        System.out.println(b);
+    }
+}"""
+        res = analyze_multilang(java_code, language="java")
+        errs = [d for d in res["diagnostics"] if d["severity"] == "error"]
+        warns = [d for d in res["diagnostics"] if d["severity"] == "warning"]
+        self.assertEqual(len(errs), 1)
+        self.assertIn("b", errs[0]["message"])
+        self.assertEqual(len(warns), 1)
+        self.assertIn("a", warns[0]["message"])
+
 
 if __name__ == "__main__":
     unittest.main()
